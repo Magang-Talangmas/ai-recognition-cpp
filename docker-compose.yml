@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   mediamtx:
     image: bluenviron/mediamtx:latest
@@ -7,9 +6,12 @@ services:
       - "8554:8554" # RTSP
       - "1935:1935" # RTMP
       - "8888:8888" # HLS
-      - "8889:8889" # WebRTC
+      - "8889:8889" # WebRTC HTTP
+      - "8189:8189/udp" # WebRTC ICE UDP
+      - "8189:8189/tcp" # WebRTC ICE TCP
     environment:
       - MTX_PROTOCOLS=tcp
+      - MTX_WEBRTCADDITIONALHOSTS=192.168.77.171
     restart: unless-stopped
 
   redis:
