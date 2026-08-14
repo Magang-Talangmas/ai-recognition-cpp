@@ -5,7 +5,10 @@ import sys
 
 # Ambil URL dari argumen pertama, kalau tidak ada pakai fallback
 rtsp_url = sys.argv[1] if len(sys.argv) > 1 else "rtsp://192.168.77.171:8554/stream"
-cap = cv2.VideoCapture(rtsp_url)
+
+# Jika input berupa angka tunggal (0, 1, 2), ubah jadi integer untuk Webcam USB/DroidCam
+video_source = int(rtsp_url) if rtsp_url.isdigit() else rtsp_url
+cap = cv2.VideoCapture(video_source)
 
 if not cap.isOpened():
     print("[Python Proxy] Gagal membuka RTSP Stream")
