@@ -10,6 +10,9 @@ rtsp_url = sys.argv[1] if len(sys.argv) > 1 else "rtsp://192.168.77.171:8554/str
 video_source = int(rtsp_url) if rtsp_url.isdigit() else rtsp_url
 cap = cv2.VideoCapture(video_source)
 
+# Set buffer size sekecil mungkin agar tidak ada antrean frame (delay/lag)
+cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
 if not cap.isOpened():
     print("[Python Proxy] Gagal membuka RTSP Stream")
     sys.exit(1)
@@ -27,10 +30,11 @@ try:
             print("[Python Proxy] Frame kosong, reconnecting...")
             time.sleep(1)
             cap.open(rtsp_url)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             continue
             
-        # Encode ke JPG untuk menghemat bandwidth pipe
-        ret, buf = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        # Encode ke JPG untuk menghemat bandwidth pipe (kualitas 70 agar lebih cepat)
+        ret, buf = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         if not ret:
             continue
             
@@ -40,8 +44,8 @@ try:
         pipe.write(buf.tobytes())
         pipe.flush()
         
-        # Jeda dikit biar gak bikin CPU 100%
-        time.sleep(0.01)
+        # HAPUS time.sleep(0.01) di sini! cap.read() sudah blocking sesuai FPS asli kamera.
+        # Adanya sleep sebelumnya membuat Windows menambah delay ~15ms ekstra per frame.
 
 except Exception as e:
     print("[Python Proxy] Error:", e)
