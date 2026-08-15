@@ -7,8 +7,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Find OpenCV
 find_package(OpenCV REQUIRED)
 
-# Find ONNX Runtime (installed via vcpkg)
-find_package(onnxruntime CONFIG REQUIRED)
+# Find ONNX Runtime (manual install on Linux or vcpkg)
+find_library(ONNXRUNTIME_LIB onnxruntime PATHS /usr/local/lib /usr/lib)
+if (NOT ONNXRUNTIME_LIB)
+    find_package(onnxruntime CONFIG REQUIRED)
+    set(ONNXRUNTIME_LIB onnxruntime::onnxruntime)
+endif()
 
 # Threading
 find_package(Threads REQUIRED)
@@ -48,5 +52,5 @@ target_link_libraries(face_preprocessor PRIVATE
     ${HIREDIS_LIBRARIES}
     nlohmann_json::nlohmann_json
     Threads::Threads
-    onnxruntime::onnxruntime
+    ${ONNXRUNTIME_LIB}
 )

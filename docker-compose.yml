@@ -18,3 +18,17 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
+
+  ml_core:
+    build: .
+    container_name: ml_core_cpp
+    depends_on:
+      - redis
+      - mediamtx
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=tcp://redis:6379
+      - REDIS_CHANNEL=face_preprocessed_queue
+      - CAMERA_ID=cam_01
+    restart: unless-stopped

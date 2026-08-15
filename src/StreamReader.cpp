@@ -1,9 +1,12 @@
 #include "StreamReader.hpp"
 #include <iostream>
 #include <chrono>
-#include <windows.h>
 #include <fstream>
-#include <chrono>
+#include <thread>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 StreamReader::StreamReader(const std::string& rtsp_url) 
     : rtsp_url_(rtsp_url), is_running_(false), has_new_frame_(false) {
@@ -41,21 +44,18 @@ std::optional<cv::Mat> StreamReader::getLatestFrame() {
 }
 
 void StreamReader::reconnect() {
-    // Dengan Named Pipe, Python proxy yang handle reconnect.
-    // Di C++, reconnect() tidak melakukan apa-apa.
-    std::cout << "[StreamReader] RTSP Reconnect ditangani oleh Python Proxy..." << std::endl;
+    std::cout << "[StreamReader] RTSP Reconnect..." << std::endl;
 }
 
 void StreamReader::captureLoop() {
     std::cout << "[StreamReader] Starting capture loop for: " << rtsp_url_ << std::endl;
-    
-    // Jalankan proxy Python di background
+
+#ifdef _WIN32
+    // Jalankan proxy Python di background (Windows Spesifik)
     std::cout << "[StreamReader] Memulai Python RTSP Proxy..." << std::endl;
-    // Gunakan path absolut untuk keamanan dan spesifik Miniconda Python
     std::string cmd = "start /B D:\\MiniConda\\python.exe D:\\ai-recognition-cpp\\rtsp_proxy.py \"" + rtsp_url_ + "\"";
     system(cmd.c_str());
 
-    // Buka Named Pipe
     HANDLE hPipe = CreateNamedPipeA(
         "\\\\.\\pipe\\rtsp_pipe",
         PIPE_ACCESS_INBOUND,
@@ -82,28 +82,39 @@ void StreamReader::captureLoop() {
         DWORD bytesRead;
         uint32_t size = 0;
         
-        // Baca ukuran (4 bytes)
-        if (!ReadFile(hPipe, &size, 4, &bytesRead, NULL) || bytesRead != 4) {
-            std::cerr << "[StreamReader] Gagal membaca ukuran frame dari Pipe" << std::endl;
-            break;
-        }
-
-        if (size == 0 || size > 1024 * 1024 * 10) {
-            std::cerr << "[StreamReader] Ukuran frame tidak valid: " << size << std::endl;
-            break;
-        }
+        if (!ReadFile(hPipe, &size, 4, &bytesRead, NULL) || bytesRead != 4) break;
+        if (size == 0 || size > 1024 * 1024 * 10) break;
         
-        // Baca data JPG
         std::vector<uchar> buf(size);
-        if (!ReadFile(hPipe, buf.data(), size, &bytesRead, NULL) || bytesRead != size) {
-            std::cerr << "[StreamReader] Gagal membaca data JPG dari Pipe" << std::endl;
-            break;
+        if (!ReadFile(hPipe, buf.data(), size, &bytesRead, NULL) || bytesRead != size) break;
+        
+        cv::Mat frame = cv::imdecode(buf, cv::IMREAD_COLOR);
+        if (frame.empty()) continue;
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            latest_frame_ = frame.clone();
+            has_new_frame_ = true;
+        }
+    }
+    CloseHandle(hPipe);
+#else
+    // Native OpenCV untuk Linux / Docker
+    std::cout << "[StreamReader] Menggunakan Native OpenCV di Linux/Docker" << std::endl;
+    while(is_running_) {
+        if (!capture_.isOpened()) {
+            capture_.open(rtsp_url_, cv::CAP_FFMPEG);
+            if (!capture_.isOpened()) {
+                std::cerr << "[StreamReader] Gagal membuka stream! Reconnecting in 2s..." << std::endl;
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                continue;
+            }
         }
         
-        // Decode frame
-        cv::Mat frame = cv::imdecode(buf, cv::IMREAD_COLOR);
-        if (frame.empty()) {
-            std::cerr << "[StreamReader] Gagal mendecode JPG!" << std::endl;
+        cv::Mat frame;
+        if (!capture_.read(frame) || frame.empty()) {
+            std::cerr << "[StreamReader] Frame kosong atau stream putus!" << std::endl;
+            capture_.release();
             continue;
         }
 
@@ -113,7 +124,7 @@ void StreamReader::captureLoop() {
             has_new_frame_ = true;
         }
     }
-    
-    CloseHandle(hPipe);
+#endif
+
     std::cout << "[StreamReader] Capture loop stopped." << std::endl;
 }
