@@ -69,11 +69,18 @@ int main(int argc, char** argv) {
     // Load .env file
     std::map<std::string, std::string> env = loadEnv(".env");
 
-    // Configuration with fallback to default values if .env is missing
-    std::string rtsp_url = env.count("RTSP_URL") ? env["RTSP_URL"] : "rtsp://192.168.77.171:8554/stream";
-    std::string redis_url = env.count("REDIS_URL") ? env["REDIS_URL"] : "tcp://127.0.0.1:6379";
-    std::string redis_channel = env.count("REDIS_CHANNEL") ? env["REDIS_CHANNEL"] : "face_preprocessed_queue";
-    std::string camera_id = env.count("CAMERA_ID") ? env["CAMERA_ID"] : "cam_01";
+    // Configuration: Prefer OS environment variables, then .env file, then defaults
+    const char* env_rtsp = std::getenv("RTSP_URL");
+    std::string rtsp_url = env_rtsp ? env_rtsp : (env.count("RTSP_URL") ? env["RTSP_URL"] : "rtsp://192.168.77.171:8554/stream");
+    
+    const char* env_redis = std::getenv("REDIS_URL");
+    std::string redis_url = env_redis ? env_redis : (env.count("REDIS_URL") ? env["REDIS_URL"] : "tcp://127.0.0.1:6379");
+    
+    const char* env_channel = std::getenv("REDIS_CHANNEL");
+    std::string redis_channel = env_channel ? env_channel : (env.count("REDIS_CHANNEL") ? env["REDIS_CHANNEL"] : "face_preprocessed_queue");
+    
+    const char* env_cam = std::getenv("CAMERA_ID");
+    std::string camera_id = env_cam ? env_cam : (env.count("CAMERA_ID") ? env["CAMERA_ID"] : "cam_01");
     
     // Model paths for ONNX
     std::string scrfd_model_path = "models/scrfd_2.5g_kps.onnx";
@@ -99,8 +106,9 @@ int main(int argc, char** argv) {
     // Start async reading from MediaMTX
     reader.start();
 
-    const std::string WINDOW_NAME = "Talangmas AI Attendance - Live View";
-    cv::namedWindow(WINDOW_NAME, cv::WINDOW_NORMAL);
+    // UI dimatikan agar bisa berjalan Headless di Docker. Gunakan viewer.py untuk melihat visualnya.
+    // const std::string WINDOW_NAME = "Talangmas AI Attendance - Live View";
+    // cv::namedWindow(WINDOW_NAME, cv::WINDOW_NORMAL);
 
     // Thread khusus untuk Inferensi AI agar tidak membuat video lag
     std::thread inference_thread([&]() {
@@ -165,12 +173,11 @@ int main(int argc, char** argv) {
                 drawDashedRectangle(display_frame, face.bounding_box, cv::Scalar(255, 255, 0), 1, 6);
             }
             
-            cv::imshow(WINDOW_NAME, display_frame);
-            
-            // Tunggu 1 milidetik agar window OpenCV sempat merender gambar
-            if (cv::waitKey(1) == 'q') {
-                keep_running = false;
-            }
+            // UI dimatikan untuk mode headless
+            // cv::imshow(WINDOW_NAME, display_frame);
+            // if (cv::waitKey(1) == 'q') {
+            //     keep_running = false;
+            // }
             
         } else {
             // Sleep briefly to yield CPU if no new frame is available yet

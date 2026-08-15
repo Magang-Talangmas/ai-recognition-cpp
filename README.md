@@ -43,43 +43,43 @@ CAMERA_ID=cam_01
 
 ## 🛠️ Persyaratan Sistem (Prerequisites)
 
-- **OS**: Windows 10/11 (64-bit)
-- **Compiler**: MSVC (Visual Studio 2022 Build Tools)
-- **CMake**: Versi 3.20 atau lebih baru
-- **Vcpkg**: Package manager untuk menginstall dependensi C++ (`opencv`, `onnxruntime`, `hiredis`).
-- **Python 3**: (Miniconda direkomendasikan) dengan library `opencv-python`.
-- **Redis Server**: Server lokal (`127.0.0.1:6379`) atau sesuaikan di `.env`.
+- **OS**: Windows, Linux, atau macOS
+- **Docker**: Docker Desktop (Windows/Mac) atau Docker Engine (Linux)
+- **Docker Compose**: Terintegrasi dengan Docker Desktop.
+- **Python 3**: (Opsional, hanya jika Anda ingin menjalankan `viewer.py`) dengan library `opencv-python`, `redis`, `python-dotenv`.
 
 ---
 
-## 🏗️ Cara Membangun (Build)
+## 🏗️ Cara Menjalankan dengan Docker (Disarankan)
 
-1. Pastikan Anda sudah berada di folder root proyek:
-   ```powershell
-   cd D:\ai-recognition-cpp
+Kini seluruh C++ ML Core, Redis, dan MediaMTX sudah dibungkus (Dockerized) untuk menjamin kompatibilitas *cross-platform* dan mempercepat proses setup.
+
+1. Sesuaikan URL kamera Anda di file `.env` (contohnya pada baris `RTSP_URL`).
+2. Buka terminal di folder root proyek dan jalankan:
+   ```bash
+   docker-compose up --build -d
    ```
-
-2. Generate file build menggunakan CMake:
-   ```powershell
-   cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="vcpkg/scripts/buildsystems/vcpkg.cmake"
-   ```
-
-3. Kompilasi (Build) proyek untuk mode Release:
-   ```powershell
-   cmake --build build --config Release
+3. Docker akan otomatis membangun container C++, dan menjalankan aplikasinya di latar belakang (*headless mode*).
+4. Untuk melihat *log* dan pantauan deteksi dari C++ secara langsung, jalankan:
+   ```bash
+   docker-compose logs -f ml_core
    ```
 
 ---
 
-## 🚀 Cara Menjalankan (Run)
+## 👁️ Cara Melihat Hasil Visual (Viewer)
 
-1. Pastikan konfigurasi di file `.env` sudah benar, dan server **Redis** menyala.
-2. Jalankan executable yang sudah di-build:
-   ```powershell
-   .\build\Release\face_preprocessor.exe
+Karena C++ ML Core dirancang bekerja *headless* di dalam Docker tanpa membebani GPU/RAM untuk merender GUI (layar), Anda bisa memunculkan jendela *live camera* beserta kotak hijau (*bounding box*) deteksi wajah menggunakan *script* ringan:
+
+1. Pastikan menginstal modul Python yang dibutuhkan:
+   ```bash
+   pip install opencv-python redis python-dotenv numpy
    ```
-3. Jendela **"Talangmas AI Attendance - Live View"** akan otomatis terbuka. Jika Anda membesarkan ukuran jendela (Maximize/Fullscreen), video akan otomatis *merentang/scaling* menyesuaikan ukuran layar Anda. Garis putus-putus (Cyan) akan mengikuti pergerakan wajah.
-4. Untuk menghentikan program, tekan `Ctrl+C` di PowerShell Anda, klik Close (`X`) di UI, atau tekan tombol `q` di keyboard.
+2. Jalankan viewer:
+   ```bash
+   python viewer.py
+   ```
+3. Tekan `q` pada keyboard saat jendela pop-up video muncul untuk menutupnya.
 
 ---
 
@@ -146,17 +146,20 @@ ai-recognition-cpp/
 │
 ├── .env                        # File konfigurasi yang bisa diedit langsung
 ├── CMakeLists.txt              # Konfigurasi build CMake
+├── Dockerfile                  # Konfigurasi OS Ubuntu & kompilasi kontainer C++
+├── docker-compose.yml          # Konfigurasi orkestrasi ML Core, Redis, dan MediaMTX
 ├── README.md                   # Dokumentasi ini
-├── rtsp_proxy.py               # Script proxy Python (otomatis berjalan)
+├── viewer.py                   # Penampil visual (video & bounding box) dari Python
+├── rtsp_proxy.py               # (Opsional) Proxy Python jika di-run native di Windows
 │
 ├── models/                     
 │   └── scrfd_2.5g_kps.onnx     # Model AI SCRFD (ONNX)
 │
 └── src/
-    ├── main.cpp                # File UI & Manajemen Multi-Threading Asynchronous
+    ├── main.cpp                # Logic Utama, Manajemen Multi-Threading Asynchronous
     ├── BrokerPublisher.hpp/cpp # Logika pengiriman tensor wajah ke Redis
     ├── FacePreprocessor.hpp/cpp# Logika deteksi, validasi blur, perbaikan brightness, crop
-    └── StreamReader.hpp/cpp    # Logika penangkapan frame CCTV (via Named Pipe)
+    └── StreamReader.hpp/cpp    # Logika penangkapan frame CCTV (Cross-Platform OpenCV)
 ```
 
 **Dikembangkan oleh Tim Developer Antigravity untuk Talangmas.**
