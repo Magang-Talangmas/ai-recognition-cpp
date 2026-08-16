@@ -99,6 +99,7 @@ int main(int argc, char** argv) {
     // Start async reading from MediaMTX
     reader.start();
 
+    // UI dihidupkan kembali untuk mode native Windows
     const std::string WINDOW_NAME = "Talangmas AI Attendance - Live View";
     cv::namedWindow(WINDOW_NAME, cv::WINDOW_NORMAL);
 
@@ -165,9 +166,8 @@ int main(int argc, char** argv) {
                 drawDashedRectangle(display_frame, face.bounding_box, cv::Scalar(255, 255, 0), 1, 6);
             }
             
+            // Tampilkan UI untuk mode native Windows
             cv::imshow(WINDOW_NAME, display_frame);
-            
-            // Tunggu 1 milidetik agar window OpenCV sempat merender gambar
             if (cv::waitKey(1) == 'q') {
                 keep_running = false;
             }

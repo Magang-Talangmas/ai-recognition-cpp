@@ -139,6 +139,31 @@ for message in pubsub.listen():
 
 ---
 
+## 📡 Arsitektur Face Recognition (Baru)
+
+Berdasarkan pembaruan arsitektur terbaru, modul pengenalan wajah (Recognition) sekarang dipisahkan dan berjalan sebagai service Python mandiri (terlepas dari proses pendeteksian C++). Service ini tidak lagi mengandalkan antrean Redis, melainkan membaca data wajah secara langsung (streaming) dari endpoint HTTP (SSE). 
+
+Berikut adalah file-file baru dan fungsinya:
+
+### 1. `sync_enroll.py` (Sinkronisasi Wajah Manual/Awal)
+Script ini berfungsi untuk melakukan sinkronisasi data wajah (enrollment) karyawan yang ada di *bucket* Supabase (`employee_faces`) ke penyimpanan lokal server AI.
+- **Fungsionalitas**: Menghubungkan ke Supabase Storage, mengunduh semua gambar wajah, melakukan ekstraksi vektor fitur (*embedding*) menggunakan **InsightFace (Buffalo_L)**, dan menyimpannya secara lokal ke dalam file `data/embeddings.npy` beserta labelnya di `data/labels.json`.
+- **Kapan digunakan?**: Jalankan script ini ketika ada penambahan karyawan baru di Supabase, atau saat inisialisasi awal server AI agar server mengenali wajah-wajah tersebut.
+- **Cara Menjalankan**: `python sync_enroll.py`
+
+### 2. `recognition.py` (Service Utama Face Recognition)
+Script ini merupakan *worker* utama yang berjalan di latar belakang untuk melakukan pengenalan wajah secara *real-time*.
+- **Fungsionalitas**: 
+  - Melakukan koneksi ke stream (SSE - Server-Sent Events) dari module pendeteksi wajah (Detection) pada endpoint yang dikonfigurasi (`DETECTION_STREAM_URL`).
+  - Menerima dan melakukan dekode stream gambar berformat `float32` (*base64*).
+  - Melakukan inferensi menggunakan model **InsightFace** untuk mendapatkan *embedding* dari wajah yang masuk.
+  - Membandingkan wajah tersebut dengan data wajah karyawan (dari hasil `sync_enroll.py`) menggunakan metrik *Cosine Similarity*.
+  - Jika wajah dikenali dan melampaui *threshold* (`SIMILARITY_THRESHOLD`), data tersebut langsung dimasukkan (*insert*) ke database PostgreSQL pada tabel `recognition_events`.
+- **Kapan digunakan?**: Harus berjalan secara terus-menerus berdampingan dengan module *Detection*.
+- **Cara Menjalankan**: `python recognition.py`
+
+---
+
 ## 📁 Struktur Direktori
 
 ```text
@@ -148,9 +173,17 @@ ai-recognition-cpp/
 ├── CMakeLists.txt              # Konfigurasi build CMake
 ├── README.md                   # Dokumentasi ini
 ├── rtsp_proxy.py               # Script proxy Python (otomatis berjalan)
+├── sync_enroll.py              # Script sinkronisasi data enrollment wajah dari Supabase (BARU)
+├── recognition.py              # Script pengenalan wajah & auto-insert ke Database (BARU)
+├── requirements.txt            # Diperbarui dengan psycopg2, supabase, insightface, dll. (BARU)
 │
 ├── models/                     
 │   └── scrfd_2.5g_kps.onnx     # Model AI SCRFD (ONNX)
+│
+├── data/                       
+│   ├── enrolled/               # Folder berisi gambar asli karyawan (BARU)
+│   ├── embeddings.npy          # File tensor embedding seluruh wajah (BARU)
+│   └── labels.json             # Pemetaan index embedding ke ID Karyawan (employeeId) (BARU)
 │
 └── src/
     ├── main.cpp                # File UI & Manajemen Multi-Threading Asynchronous
