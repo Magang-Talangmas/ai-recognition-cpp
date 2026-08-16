@@ -104,7 +104,19 @@ int main(int argc, char** argv) {
 
     // Thread khusus untuk Inferensi AI agar tidak membuat video lag
     std::thread inference_thread([&]() {
+        auto last_inference_time = std::chrono::steady_clock::now();
+        
         while (keep_running) {
+            auto now = std::chrono::steady_clock::now();
+            auto time_since_last = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_inference_time).count();
+            
+            // --- FRAME SKIPPING LOGIC ---
+            // Hanya proses maksimal 5 gambar per detik (1000ms / 5 = 200ms)
+            if (time_since_last < 200) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+            
             cv::Mat frame_to_process;
             bool should_process = false;
             
@@ -119,6 +131,7 @@ int main(int argc, char** argv) {
             
             if (should_process && !frame_to_process.empty()) {
                 auto faces = preprocessor.process(frame_to_process);
+                last_inference_time = std::chrono::steady_clock::now(); // Catat waktu proses terakhir
                 
                 {
                     std::lock_guard<std::mutex> lock(mtx);

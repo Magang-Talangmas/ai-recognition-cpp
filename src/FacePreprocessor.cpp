@@ -64,7 +64,17 @@ bool FacePreprocessor::isBlurry(const cv::Mat& image) {
     cv::meanStdDev(laplacian, mean, stddev);
     
     double variance = stddev.val[0] * stddev.val[0];
-    return variance < blur_threshold_;
+    
+    if (variance < blur_threshold_) {
+        std::cout << "[Blur Check] DITOLAK! Variance = " << variance 
+                  << " (Batas minimal: " << blur_threshold_ << ")" << std::endl;
+        return true;
+    }
+    
+    // Uncomment baris di bawah ini kalau mau lihat nilai ketajaman semua wajah (meski tidak dibuang)
+    // std::cout << "[Blur Check] LOLOS! Variance = " << variance << std::endl;
+    
+    return false;
 }
 
 cv::Mat FacePreprocessor::applyCLAHE(const cv::Mat& image) {
@@ -237,10 +247,7 @@ std::vector<PreprocessedFace> FacePreprocessor::process(const cv::Mat& frame) {
         // 1. Align wajah agar lurus menggunakan 5 landmarks
         cv::Mat aligned = alignFace5Points(frame, raw_face.landmarks);
         
-        // 2. Cek apakah gambar telalu blur
-        // if (isBlurry(aligned)) continue; // Tunda dulu pengecekan blur selama masa testing
-        
-        // 3. Potong (Crop) & Resize ke 112x112
+        // 2. Potong (Crop) & Resize ke 112x112
         cv::Rect box = raw_face.bounding_box;
         box.x = std::max(0, box.x);
         box.y = std::max(0, box.y);
@@ -250,6 +257,12 @@ std::vector<PreprocessedFace> FacePreprocessor::process(const cv::Mat& frame) {
         if (box.width <= 0 || box.height <= 0) continue;
         
         cv::Mat face_crop = aligned(box);
+        
+        // 3. Cek apakah gambar telalu blur (HARUS dilakukan pada potongan wajah, BUKAN pada seluruh layar)
+        if (isBlurry(face_crop)) {
+            continue; // isBlurry sudah melakukan print variance
+        }
+        
         cv::Mat resized;
         cv::resize(face_crop, resized, cv::Size(target_size_, target_size_));
         
