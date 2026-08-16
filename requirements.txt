@@ -8,3 +8,4 @@ psycopg2-binary>=2.9.9
 supabase>=2.3.0
 sseclient-py>=1.8.0
 insightface>=0.7.3
+Flask>=3.0.0

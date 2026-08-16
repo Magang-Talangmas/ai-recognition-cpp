@@ -8,7 +8,7 @@ import requests
 import sseclient
 import cv2
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 import insightface
 from insightface.app import FaceAnalysis
@@ -31,7 +31,7 @@ ML_API_KEY = os.getenv("ML_API_KEY", "your-secret-api-key-to-auth-requests")
 DATA_DIR = "./data"
 EMBEDDINGS_FILE = os.path.join(DATA_DIR, "embeddings.npy")
 LABELS_FILE = os.path.join(DATA_DIR, "labels.json")
-SIMILARITY_THRESHOLD = 0.65
+SIMILARITY_THRESHOLD = 0.50
 
 # Cache untuk mencegah pengiriman spam ke database dalam interval pendek
 last_event_status_cache = {}
@@ -62,36 +62,51 @@ def cosine_similarity(emb1, emb2):
     return np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
 
 def recognize_face(face_img):
-    # Dapatkan embedding dari wajah yang sudah dipotong (112x112)
-    embedding = rec_model.get_feat(face_img)
+    # Tambahkan padding agar detektor (app.get) punya ruang untuk menemukan dan meluruskan (align) wajah.
+    # Ini berfungsi sebagai "re-kalibrasi" karena kalibrasi C++ dari Device 2 kurang presisi.
+    padded_img = cv2.copyMakeBorder(face_img, 60, 60, 60, 60, cv2.BORDER_CONSTANT, value=[0, 0, 0])
+    
+    faces = app.get(padded_img)
+    
+    if len(faces) == 0:
+        # Fallback darurat
+        resized = cv2.resize(face_img, (112, 112))
+        embedding = rec_model.get_feat(resized)
+    else:
+        # Ambil wajah yang paling besar di dalam frame
+        best_face = max(faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
+        embedding = best_face.embedding
+
     if embedding is None or len(embedding) == 0:
         return None, 0.0
 
-    # Pastikan shape embedding sama dengan enrollment (biasanya 512D)
     embedding = np.array(embedding).flatten()
     
     best_match_id = None
     best_score = 0.0
-    
-    for i, db_emb in enumerate(enrolled_embeddings):
-        score = cosine_similarity(embedding, db_emb)
+
+    for i, enrolled_emb in enumerate(enrolled_embeddings):
+        score = cosine_similarity(embedding, enrolled_emb)
+        
         if score > best_score:
             best_score = score
             best_match_id = enrolled_labels[i]
-            
+
     if best_score >= SIMILARITY_THRESHOLD:
-        return best_match_id, best_score
+        return best_match_id, float(best_score)
     else:
-        return "UNKNOWN", best_score
+        return "UNKNOWN", float(best_score)
+
 
 def get_event_type():
     hour = datetime.now().hour
-    if 7 <= hour < 12:
-        return "CHECK_IN"
+    if 7 <= hour < 16:
+        return "CHECK_IN" # Check-in sampai jam 16:00 (4 Sore)
     elif hour >= 17:
-        return "CHECK_OUT"
+        return "CHECK_OUT" # Check-out dari jam 16:00 ke atas
     else:
-        return None  # Diabaikan jika di luar jam (00:00-06:59 dan 12:00-16:59)
+        return None  # Diabaikan jika di luar jam (00:00-06:59)
+
 
 def is_action_allowed_by_cooldown(employee_id, event_type):
     now = time.time()
@@ -123,14 +138,15 @@ def send_to_backend(employee_id, camera_id, confidence, thumbnail_url, event_typ
             "confidence": float(confidence * 100),
             "status": "Verified" if employee_id != "UNKNOWN" else "Unknown",
             "thumbnail": thumbnail_url,
-            "eventType": event_type
+            "eventType": event_type,
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         response = requests.post(BACKEND_API_URL, json=payload, headers=headers, timeout=5)
         
         cache_key = f"{employee_id}_{event_type}"
         
-        if response.status_code == 201:
+        if response.status_code in [200, 201]:
             print(f"[API] Event {event_type} terkirim. Emp: {employee_id}, Score: {confidence:.2f}")
             # Update cache agar cooldown berjalan
             last_event_status_cache[cache_key] = {'time': time.time()}
@@ -165,27 +181,42 @@ def start_stream_listener():
                     if not base64_img:
                         continue
                         
-                    # Decode base64 float32 raw bytes
+                    image_format = data.get("image_format", "")
                     raw_bytes = base64.b64decode(base64_img)
-                    face_tensor_1d = np.frombuffer(raw_bytes, dtype=np.float32)
-                    face_tensor = face_tensor_1d.reshape((112, 112, 3))
                     
-                    # Kembalikan normalisasi ke pixel 0-255 uint8 BGR
-                    face_img = ((face_tensor + 1.0) * 127.5).astype(np.uint8)
+                    if "float32" in image_format or len(raw_bytes) == 112 * 112 * 3 * 4:
+                        face_tensor_1d = np.frombuffer(raw_bytes, dtype=np.float32)
+                        face_tensor = face_tensor_1d.reshape((112, 112, 3))
+                        face_img = ((face_tensor + 1.0) * 127.5).astype(np.uint8)
+                    else:
+                        # Format baru kemungkinan JPEG terkompresi
+                        np_arr = np.frombuffer(raw_bytes, np.uint8)
+                        face_img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                        if face_img is None:
+                            print("Gagal mendecode gambar wajah dari stream")
+                            continue
+                    
                     
                     # Lakukan recognition
+                    print(f"[{camera_id}] Menerima wajah, memproses AI...")
                     employee_id, confidence = recognize_face(face_img)
                     
-                    if employee_id and employee_id != "UNKNOWN":
+                    if employee_id == "UNKNOWN":
+                        print(f"[{camera_id}] Wajah tidak dikenal (Confidence: {confidence:.2f})")
+                        continue
+                        
+                    if employee_id:
                         # Tentukan eventType berdasarkan waktu
                         event_type = get_event_type()
                         
                         # Abaikan jika di luar jam absensi (jam 12:00 - 16:59)
                         if not event_type:
+                            print(f"[{camera_id}] Dikenali sebagai {employee_id}, tapi ditolak karena di luar jam absen.")
                             continue
                             
                         # Rate limiter / cooldown
                         if not is_action_allowed_by_cooldown(employee_id, event_type):
+                            print(f"[{camera_id}] Dikenali sebagai {employee_id} (Cooldown aktif)")
                             continue
                             
                         print(f"[{camera_id}] Memproses: {employee_id} ({event_type})")
