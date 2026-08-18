@@ -57,5 +57,5 @@ private:
     
     // SCRFD Implementation Methods
     std::vector<PreprocessedFace> detectFacesSCRFD(const cv::Mat& frame);
-    cv::Mat alignFace5Points(const cv::Mat& frame, const std::vector<cv::Point2f>& landmarks);
+    cv::Mat alignCropArcFace(const cv::Mat& frame, const std::vector<cv::Point2f>& landmarks);
 };

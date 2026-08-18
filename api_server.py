@@ -26,6 +26,9 @@ MAX_HISTORY     = 50
 face_history    = deque(maxlen=MAX_HISTORY)
 latest_result   = {}
 sse_subscribers = []
+
+latest_video_frame = None
+video_subscribers = []
 lock            = threading.Lock()
 
 
@@ -48,7 +51,7 @@ def redis_listener():
             entry = {
                 "received_at":       time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "camera_id":         data.get("camera_id", "unknown"),
-                "timestamp":         data.get("timestamp"),
+                "timestamp_ms":      data.get("timestamp_ms"),
                 "face_index":        data.get("face_index", 0),
                 "confidence_score":  data.get("confidence_score"),
                 "bounding_box":      data.get("bounding_box"),
@@ -65,8 +68,29 @@ def redis_listener():
         except Exception as e:
             print(f"[Redis] Parse error: {e}")
 
+def video_listener():
+    global latest_video_frame
+    r      = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0) # raw bytes
+    pubsub = r.pubsub()
+    pubsub.subscribe("face_video_stream")
+    print(f"[Redis] Listening on channel: face_video_stream")
+
+    for message in pubsub.listen():
+        if message["type"] != "message":
+            continue
+        try:
+            latest_video_frame = message["data"]
+            # Trigger subscribers
+            for q in list(video_subscribers):
+                try:
+                    q.append(latest_video_frame)
+                except Exception:
+                    pass
+        except Exception as e:
+            pass
 
 threading.Thread(target=redis_listener, daemon=True).start()
+threading.Thread(target=video_listener, daemon=True).start()
 
 
 # ─────────────────────────────────────────────
@@ -111,44 +135,33 @@ def health_check():
 
 
 @app.get("/api/v1/faces/latest", tags=["Faces"], summary="Get latest detected face")
-def get_latest_face(include_image: bool = False):
+def get_latest_face():
     """
     Ambil hasil preprocessing wajah yang PALING TERAKHIR diterima.
-
-    Query params:
-    - include_image: true = sertakan face_image_base64 (float32 tensor 112x112x3, base64 encoded)
     """
     with lock:
         result = dict(latest_result)
     if not result:
         return JSONResponse(status_code=404, content={"detail": "No face detected yet"})
-    if not include_image:
-        result.pop("face_image_base64", None)
     return result
 
 
 @app.get("/api/v1/faces/history", tags=["Faces"], summary="Get face detection history")
-def get_face_history(limit: int = 10, include_image: bool = False):
+def get_face_history(limit: int = 10):
     """
     Ambil histori N wajah terakhir yang sudah dipreprocessing.
 
     Query params:
     - limit: jumlah entri (max 50, default 10)
-    - include_image: sertakan face_image_base64 atau tidak
     """
     limit = min(limit, MAX_HISTORY)
     with lock:
         entries = list(face_history)[-limit:]
-    if not include_image:
-        entries = [
-            {k: v for k, v in e.items() if k != "face_image_base64"}
-            for e in entries
-        ]
     return {"count": len(entries), "faces": entries}
 
 
 @app.get("/api/v1/faces/test-array", tags=["Testing"], summary="Get raw array of objects for browser testing")
-def get_test_faces_array(limit: int = 10, include_image: bool = False):
+def get_test_faces_array(limit: int = 10):
     """
     Sama seperti history, namun endpoint ini langsung mereturn **Array of Objects** `[{}, {}]` 
     bukan object `{"faces": []}`. Dibuat khusus agar mudah dipanggil/dibaca langsung dari browser untuk testing.
@@ -156,16 +169,11 @@ def get_test_faces_array(limit: int = 10, include_image: bool = False):
     limit = min(limit, MAX_HISTORY)
     with lock:
         entries = list(face_history)[-limit:]
-    if not include_image:
-        entries = [
-            {k: v for k, v in e.items() if k != "face_image_base64"}
-            for e in entries
-        ]
     return entries
 
 
 @app.get("/api/v1/faces/stream", tags=["Faces"], summary="Real-time SSE stream")
-async def stream_faces(request: Request, include_image: bool = False):
+async def stream_faces(request: Request):
     """
     Server-Sent Events (SSE): real-time push setiap ada wajah baru terdeteksi.
 
@@ -196,8 +204,6 @@ async def stream_faces(request: Request, include_image: bool = False):
                     q.clear()
                 for item in items:
                     payload = dict(item)
-                    if not include_image:
-                        payload.pop("face_image_base64", None)
                     yield f"data: {json.dumps(payload)}\n\n"
                 await asyncio.sleep(0.05)
         finally:
@@ -211,6 +217,43 @@ async def stream_faces(request: Request, include_image: bool = False):
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
+@app.get("/api/v1/video_feed", tags=["Testing"], summary="MJPEG Video Stream with Bounding Boxes")
+async def video_feed(request: Request):
+    """
+    Menyediakan video live stream (MJPEG) yang bisa dipasang langsung di tag <img> HTML.
+    Berisi kotak bounding box hasil deteksi dari program C++.
+    """
+    q = deque(maxlen=10)
+    with lock:
+        video_subscribers.append(q)
+
+    async def frame_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                
+                frame_data = None
+                with lock:
+                    if len(q) > 0:
+                        frame_data = q[-1]
+                        q.clear()
+                
+                if frame_data:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
+                
+                await asyncio.sleep(0.06) # ~15 FPS
+        finally:
+            with lock:
+                if q in video_subscribers:
+                    video_subscribers.remove(q)
+
+    return StreamingResponse(
+        frame_generator(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 # ─────────────────────────────────────────────
 # MAIN

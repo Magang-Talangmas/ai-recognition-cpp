@@ -24,6 +24,13 @@ public:
      */
     void publish(const std::vector<PreprocessedFace>& faces);
 
+    /**
+     * @brief Encode and publish the full video frame for MJPEG stream
+     * 
+     * @param frame The full frame with drawn bounding boxes
+     */
+    void publishVideoFrame(const cv::Mat& frame);
+
 private:
     std::string encodeBase64(const cv::Mat& image);
 

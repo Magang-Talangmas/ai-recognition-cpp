@@ -96,23 +96,29 @@ cv::Mat FacePreprocessor::normalizeImage(const cv::Mat& image) {
     return (float_image / 127.5f) - 1.0f;
 }
 
-cv::Mat FacePreprocessor::alignFace5Points(const cv::Mat& frame, const std::vector<cv::Point2f>& landmarks) {
-    if (landmarks.size() != 5) return frame.clone();
+#include <opencv2/calib3d.hpp>
+
+cv::Mat FacePreprocessor::alignCropArcFace(const cv::Mat& frame, const std::vector<cv::Point2f>& landmarks) {
+    if (landmarks.size() != 5) return cv::Mat();
     
-    // Algoritma Alignment menggunakan sudut mata kiri dan kanan (Titik 0 dan 1)
-    cv::Point2f left_eye = landmarks[0];
-    cv::Point2f right_eye = landmarks[1];
+    // Standard ArcFace 112x112 template coordinates
+    std::vector<cv::Point2f> dst_pts = {
+        cv::Point2f(38.2946f, 51.6963f), // Left eye
+        cv::Point2f(73.5318f, 51.5014f), // Right eye
+        cv::Point2f(56.0252f, 71.7366f), // Nose
+        cv::Point2f(41.5493f, 92.3655f), // Left mouth
+        cv::Point2f(70.7299f, 92.2041f)  // Right mouth
+    };
     
-    double dy = right_eye.y - left_eye.y;
-    double dx = right_eye.x - left_eye.x;
-    double angle = std::atan2(dy, dx) * 180.0 / CV_PI;
+    // Estimate affine transform
+    cv::Mat M = cv::estimateAffinePartial2D(landmarks, dst_pts);
+    if (M.empty()) return cv::Mat();
     
-    cv::Point2f center((left_eye.x + right_eye.x) / 2.0f, (left_eye.y + right_eye.y) / 2.0f);
-    cv::Mat rot_mat = cv::getRotationMatrix2D(center, angle, 1.0);
+    cv::Mat aligned_crop;
+    // Warp directly into 112x112 canvas
+    cv::warpAffine(frame, aligned_crop, M, cv::Size(target_size_, target_size_), cv::INTER_CUBIC, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     
-    cv::Mat aligned;
-    cv::warpAffine(frame, aligned, rot_mat, frame.size(), cv::INTER_CUBIC);
-    return aligned;
+    return aligned_crop;
 }
 
 std::vector<PreprocessedFace> FacePreprocessor::detectFacesSCRFD(const cv::Mat& frame) {
@@ -244,36 +250,21 @@ std::vector<PreprocessedFace> FacePreprocessor::process(const cv::Mat& frame) {
     auto detected_faces = detectFacesSCRFD(frame);
     
     for (const auto& raw_face : detected_faces) {
-        // 1. Align wajah agar lurus menggunakan 5 landmarks
-        cv::Mat aligned = alignFace5Points(frame, raw_face.landmarks);
+        // 1. Align dan langsung Crop menjadi 112x112 sesuai standar ArcFace (InsightFace)
+        cv::Mat face_crop = alignCropArcFace(frame, raw_face.landmarks);
         
-        // 2. Potong (Crop) & Resize ke 112x112
-        cv::Rect box = raw_face.bounding_box;
-        box.x = std::max(0, box.x);
-        box.y = std::max(0, box.y);
-        box.width = std::min(aligned.cols - box.x, box.width);
-        box.height = std::min(aligned.rows - box.y, box.height);
+        if (face_crop.empty()) continue;
         
-        if (box.width <= 0 || box.height <= 0) continue;
-        
-        cv::Mat face_crop = aligned(box);
-        
-        // 3. Cek apakah gambar telalu blur (HARUS dilakukan pada potongan wajah, BUKAN pada seluruh layar)
+        // 2. Cek apakah gambar telalu blur
         if (isBlurry(face_crop)) {
             continue; // isBlurry sudah melakukan print variance
         }
         
-        cv::Mat resized;
-        cv::resize(face_crop, resized, cv::Size(target_size_, target_size_));
-        
-        // 4. Seimbangkan Kecerahan
-        cv::Mat enhanced = applyCLAHE(resized);
-        
-        // 5. Normalisasi piksel dari (0 - 255) menjadi (-1.0 - 1.0) tipe Float32
-        cv::Mat normalized = normalizeImage(enhanced);
+        // 3. Seimbangkan Kecerahan (Gambar ini masih standar BGR uint8 0-255)
+        cv::Mat enhanced = applyCLAHE(face_crop);
         
         PreprocessedFace result = raw_face;
-        result.face_image = normalized;
+        result.face_image = enhanced; // Kirim gambar standar BGR
         results.push_back(result);
     }
     

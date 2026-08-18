@@ -61,26 +61,29 @@ BrokerPublisher::~BrokerPublisher() {
 std::string BrokerPublisher::encodeBase64(const cv::Mat& image) {
     if (image.empty()) return "";
     
-    // Convert raw memory of float32 Mat to Base64
-    size_t data_size = image.total() * image.elemSize();
-    return base64_encode(image.ptr(), data_size);
+    // Convert to standard JPEG format
+    std::vector<uchar> buf;
+    cv::imencode(".jpg", image, buf);
+    
+    return base64_encode(buf.data(), buf.size());
 }
 
 void BrokerPublisher::publish(const std::vector<PreprocessedFace>& faces) {
     if (faces.empty()) return;
 
-    // Get current timestamp in ISO 8601 or unix ms
+    // Get current timestamp in ms
     auto now = std::chrono::system_clock::now();
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
     
-    // We run the serialization and publishing asynchronously to not block the main preprocessing thread
     std::vector<PreprocessedFace> faces_copy = faces;
     
     std::async(std::launch::async, [this, faces_copy, ms]() {
+        int face_idx = 0;
         for (const auto& face : faces_copy) {
             json j;
             j["camera_id"] = camera_id_;
             j["timestamp_ms"] = ms;
+            j["face_index"] = face_idx++;
             j["bounding_box"] = {
                 {"x", face.bounding_box.x},
                 {"y", face.bounding_box.y},
@@ -89,7 +92,7 @@ void BrokerPublisher::publish(const std::vector<PreprocessedFace>& faces) {
             };
             j["confidence_score"] = face.confidence_score;
             j["face_image_base64"] = encodeBase64(face.face_image);
-            j["image_format"] = "float32_raw_112x112x3"; // metadata describing the base64 content
+            j["image_format"] = "jpeg_base64_112x112"; // Update metadata
             
             std::string payload = j.dump();
             
@@ -99,6 +102,30 @@ void BrokerPublisher::publish(const std::vector<PreprocessedFace>& faces) {
             } catch (const sw::redis::Error& e) {
                 std::cerr << "[BrokerPublisher] Redis publish error: " << e.what() << std::endl;
             }
+        }
+    });
+}
+
+void BrokerPublisher::publishVideoFrame(const cv::Mat& frame) {
+    if (frame.empty()) return;
+
+    // We do this asynchronously to avoid blocking the main UI thread
+    cv::Mat frame_copy = frame.clone();
+    std::async(std::launch::async, [this, frame_copy]() {
+        try {
+            // Compress frame to JPEG (lower quality to save redis bandwidth)
+            std::vector<int> compression_params;
+            compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
+            compression_params.push_back(60); // 60% quality
+
+            std::vector<uchar> buf;
+            cv::imencode(".jpg", frame_copy, buf, compression_params);
+            
+            // Publish raw binary bytes directly to redis
+            std::string payload(buf.begin(), buf.end());
+            redis_.publish("face_video_stream", payload);
+        } catch (const std::exception& e) {
+            std::cerr << "[BrokerPublisher] Video frame publish error: " << e.what() << std::endl;
         }
     });
 }

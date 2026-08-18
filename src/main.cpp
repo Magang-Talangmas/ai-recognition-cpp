@@ -149,6 +149,8 @@ int main(int argc, char** argv) {
     });
 
     // Main processing loop (Hanya untuk UI dan membaca frame agar sangat mulus)
+    auto last_video_publish = std::chrono::steady_clock::now();
+
     while (keep_running) {
         auto opt_frame = reader.getLatestFrame();
         
@@ -179,6 +181,19 @@ int main(int argc, char** argv) {
             }
             
             cv::imshow(WINDOW_NAME, display_frame);
+            
+            // Limit publish video stream to ~15 FPS to save CPU and bandwidth
+            auto now = std::chrono::steady_clock::now();
+            auto time_since_last_vid = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_video_publish).count();
+            if (time_since_last_vid > 66) { // 1000ms / 15 = 66ms
+                // Scale down frame before publishing to save bandwidth (Diperbesar jadi HD 1280)
+                cv::Mat small_frame;
+                float scale = 1280.0f / display_frame.cols;
+                cv::resize(display_frame, small_frame, cv::Size(), scale, scale, cv::INTER_AREA);
+                
+                publisher.publishVideoFrame(small_frame);
+                last_video_publish = now;
+            }
             
             // Tunggu 1 milidetik agar window OpenCV sempat merender gambar
             if (cv::waitKey(1) == 'q') {
