@@ -33,7 +33,7 @@ def sync_from_database():
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
-        cur.execute('SELECT "employeeId", photos FROM employees WHERE photos IS NOT NULL')
+        cur.execute("SELECT \"employeeId\", photos FROM employees WHERE photos IS NOT NULL AND status = 'Active'")
         rows = cur.fetchall()
         cur.close()
         conn.close()

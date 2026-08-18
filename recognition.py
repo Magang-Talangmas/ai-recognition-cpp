@@ -13,8 +13,11 @@ from dotenv import load_dotenv
 import insightface
 from insightface.app import FaceAnalysis
 from supabase import create_client, Client
+from concurrent.futures import ThreadPoolExecutor
 
 load_dotenv()
+
+executor = ThreadPoolExecutor(max_workers=10)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SECRET_KEY")
@@ -221,27 +224,35 @@ def start_stream_listener():
                             
                         print(f"[{camera_id}] Memproses: {employee_id} ({event_type})")
                         
-                        # Upload gambar ke Supabase Storage (snapshots)
-                        thumbnail_url = None
-                        if supabase:
-                            try:
-                                success, buffer = cv2.imencode('.jpg', face_img)
-                                if success:
-                                    file_bytes = buffer.tobytes()
-                                    file_name = f"snapshots/{uuid.uuid4()}.jpg"
+                        # Pre-emptively update cache to prevent duplicate thread spawning
+                        cache_key = f"{employee_id}_{event_type}"
+                        last_event_status_cache[cache_key] = {'time': time.time()}
+                        
+                        def process_upload_and_send(emp_id, cam_id, conf, img, evt_type):
+                            # Upload gambar ke Supabase Storage (snapshots)
+                            thumb_url = None
+                            if supabase:
+                                try:
+                                    success, buffer = cv2.imencode('.jpg', img)
+                                    if success:
+                                        file_bytes = buffer.tobytes()
+                                        file_name = f"snapshots/{uuid.uuid4()}.jpg"
+                                        
+                                        # Gunakan content-type agar browser bisa merender dengan benar
+                                        supabase.storage.from_("recognition").upload(
+                                            file_name, 
+                                            file_bytes,
+                                            {"content-type": "image/jpeg"}
+                                        )
+                                        thumb_url = supabase.storage.from_("recognition").get_public_url(file_name)
+                                except Exception as upload_err:
+                                    print(f"[Supabase Error] Gagal upload gambar: {upload_err}")
                                     
-                                    # Gunakan content-type agar browser bisa merender dengan benar
-                                    supabase.storage.from_("recognition").upload(
-                                        file_name, 
-                                        file_bytes,
-                                        {"content-type": "image/jpeg"}
-                                    )
-                                    thumbnail_url = supabase.storage.from_("recognition").get_public_url(file_name)
-                            except Exception as upload_err:
-                                print(f"[Supabase Error] Gagal upload gambar: {upload_err}")
-                                
-                        # Kirim ke API
-                        send_to_backend(employee_id, camera_id, confidence, thumbnail_url, event_type)
+                            # Kirim ke API
+                            send_to_backend(emp_id, cam_id, conf, thumb_url, evt_type)
+                            
+                        # Offload blocking IO to background thread
+                        executor.submit(process_upload_and_send, employee_id, camera_id, confidence, face_img, event_type)
                         
                 except json.JSONDecodeError:
                     pass
