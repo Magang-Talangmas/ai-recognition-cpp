@@ -48,9 +48,14 @@ if 'recognition' not in app.models:
     exit(1)
 rec_model = app.models['recognition']
 
-# Memuat data enrollment
+# Sinkronisasi otomatis: hapus karyawan Inactive, enroll ulang karyawan Active
+# Model app dioper agar tidak dimuat 2 kali
+from sync_enroll import sync_from_database
+sync_from_database(app=app)
+
+# Memuat data enrollment (dibangun oleh sync_from_database di atas)
 if not os.path.exists(EMBEDDINGS_FILE) or not os.path.exists(LABELS_FILE):
-    print("Data enrollment tidak ditemukan! Harap jalankan sync_enroll.py terlebih dahulu.")
+    print("[Error] Data enrollment tidak tersedia setelah sinkronisasi. Pastikan ada karyawan aktif dengan foto.")
     exit(1)
 
 enrolled_embeddings = np.load(EMBEDDINGS_FILE)
