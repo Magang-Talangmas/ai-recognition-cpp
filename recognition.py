@@ -8,16 +8,21 @@ import requests
 import sseclient
 import cv2
 import uuid
-from datetime import datetime, timezone
+import psycopg2
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import insightface
 from insightface.app import FaceAnalysis
 from supabase import create_client, Client
-from concurrent.futures import ThreadPoolExecutor
+import threading
+from anti_spoof import check_liveness
 
 load_dotenv()
 
-executor = ThreadPoolExecutor(max_workers=10)
+# Kamus boolean per-kamera: True = sedang memproses 1 frame.
+# Jika sudah True, frame baru langsung dibuang (latest-wins, no queue).
+_camera_busy: dict[str, bool] = {}
+_camera_lock = threading.Lock()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SECRET_KEY")
@@ -31,10 +36,59 @@ else:
 DETECTION_STREAM_URL = os.getenv("DETECTION_STREAM_URL", "http://192.168.43.11:8000/api/v1/faces/stream")
 BACKEND_API_URL = os.getenv("BACKEND_API_URL", "http://localhost:5000/api/v1/live/recognition-events")
 ML_API_KEY = os.getenv("ML_API_KEY", "your-secret-api-key-to-auth-requests")
+DATABASE_URL = os.getenv("DIRECT_URL") or os.getenv("DATABASE_URL")
 DATA_DIR = "./data"
 EMBEDDINGS_FILE = os.path.join(DATA_DIR, "embeddings.npy")
 LABELS_FILE = os.path.join(DATA_DIR, "labels.json")
 SIMILARITY_THRESHOLD = 0.50
+
+# ==================== SCHEDULE LOGIC ====================
+employee_schedules = {}
+default_schedules = {}
+
+def load_schedules():
+    global employee_schedules, default_schedules
+    if not DATABASE_URL:
+        print("Warning: DATABASE_URL tidak ditemukan, jadwal default akan digunakan.")
+        return
+        
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        
+        # Load work_schedules
+        cur.execute('SELECT id, "workDays", "checkInTime", "checkOutTime" FROM work_schedules')
+        schedules = cur.fetchall()
+        
+        schedule_map = {}
+        for row in schedules:
+            sched_id, work_days, check_in, check_out = row
+            schedule_map[sched_id] = {
+                "checkInTime": check_in,
+                "checkOutTime": check_out,
+                "workDays": work_days
+            }
+            if work_days:
+                for day in work_days:
+                    default_schedules[day] = schedule_map[sched_id]
+                    
+        # Load employees
+        cur.execute('SELECT "employeeId", "scheduleId" FROM employees WHERE status = \'Active\'')
+        employees = cur.fetchall()
+        
+        for row in employees:
+            emp_id, sched_id = row
+            if sched_id and sched_id in schedule_map:
+                employee_schedules[emp_id] = schedule_map[sched_id]
+                
+        cur.close()
+        conn.close()
+        print(f"Berhasil memuat jadwal absensi untuk {len(employee_schedules)} karyawan khusus.")
+    except Exception as e:
+        print(f"[Error] Gagal memuat jadwal dari DB: {e}")
+
+load_schedules()
+# ========================================================
 
 # Cache untuk mencegah pengiriman spam ke database dalam interval pendek
 last_event_status_cache = {}
@@ -83,6 +137,27 @@ def recognize_face(face_img):
     else:
         # Ambil wajah yang paling besar di dalam frame
         best_face = max(faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
+        
+        # --- Face Anti-Spoofing Check ---
+        orig_bbox = best_face.bbox.copy()
+        orig_bbox[0] -= 60
+        orig_bbox[1] -= 60
+        orig_bbox[2] -= 60
+        orig_bbox[3] -= 60
+        
+        h, w = face_img.shape[:2]
+        orig_bbox[0] = max(0, orig_bbox[0])
+        orig_bbox[1] = max(0, orig_bbox[1])
+        orig_bbox[2] = min(w, orig_bbox[2])
+        orig_bbox[3] = min(h, orig_bbox[3])
+        
+        is_real, liveness_score = check_liveness(face_img, orig_bbox)
+        
+        # Tolak jika AI mendeteksi palsu, ATAU jika diprediksi asli tapi kurang yakin (< 0.85)
+        if not is_real or (is_real and float(liveness_score) < 0.65):
+            return "SPOOF", float(liveness_score)
+        # --------------------------------
+        
         embedding = best_face.embedding
 
     if embedding is None or len(embedding) == 0:
@@ -106,15 +181,44 @@ def recognize_face(face_img):
         return "UNKNOWN", float(best_score)
 
 
-def get_event_type():
-    hour = datetime.now().hour
-    if 7 <= hour < 16:
-        return "CHECK_IN" # Check-in sampai jam 16:00 (4 Sore)
-    elif hour >= 17:
-        return "CHECK_OUT" # Check-out dari jam 16:00 ke atas
-    else:
-        return None  # Diabaikan jika di luar jam (00:00-06:59)
+def get_event_type(employee_id):
+    days_id = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+    now_utc = datetime.now(timezone.utc)
+    now_jkt = now_utc.astimezone(timezone(timedelta(hours=7)))
+    day_name = days_id[now_jkt.weekday()]
+    
+    sched = employee_schedules.get(employee_id)
+    if not sched:
+        sched = default_schedules.get(day_name)
+        
+    if not sched:
+        # Fallback lama
+        current_hour_float = now_jkt.hour + (now_jkt.minute / 60.0)
+        if 7 <= current_hour_float < 17:
+            return "CHECK_IN" # Check-in dari jam 7:00 sampai 17:29
+        elif current_hour_float >= 17.5:
+            return "CHECK_OUT" # Check-out dari jam 17:30 ke atas
+        else:
+            return None  # Diabaikan jika di luar jam
 
+            
+    check_in_time = sched["checkInTime"] # e.g. "08:00"
+    check_out_time = sched["checkOutTime"] # e.g. "17:00"
+    
+    cin_h, cin_m = map(int, check_in_time.split(":"))
+    cout_h, cout_m = map(int, check_out_time.split(":"))
+    
+    midpoint_hour = (cin_h + cout_h) / 2.0
+    current_hour_float = now_jkt.hour + (now_jkt.minute / 60.0)
+    
+    if current_hour_float < midpoint_hour:
+        if current_hour_float >= cin_h - 2: # Buka absen masuk 2 jam sebelum jam masuk
+            return "CHECK_IN"
+    else:
+        if current_hour_float >= cout_h - 2: # Buka absen pulang 2 jam sebelum jam pulang (jika pulang lebih awal)
+            return "CHECK_OUT"
+            
+    return None
 
 def is_action_allowed_by_cooldown(employee_id, event_type):
     now = time.time()
@@ -150,7 +254,7 @@ def send_to_backend(employee_id, camera_id, confidence, thumbnail_url, event_typ
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
-        response = requests.post(BACKEND_API_URL, json=payload, headers=headers, timeout=5)
+        response = requests.post(BACKEND_API_URL, json=payload, headers=headers, timeout=15)
         
         cache_key = f"{employee_id}_{event_type}"
         
@@ -167,6 +271,64 @@ def send_to_backend(employee_id, camera_id, confidence, thumbnail_url, event_typ
             
     except Exception as e:
         print(f"[API Error] Gagal mengirim event ke backend: {e}")
+
+def process_worker(camera_id, face_img):
+    try:
+        # Lakukan recognition
+        print(f"[{camera_id}] Menerima wajah, memproses AI...")
+        employee_id, confidence = recognize_face(face_img)
+        
+        if employee_id == "SPOOF":
+            print(f"[{camera_id}] Peringatan: Spoofing / Wajah Palsu terdeteksi! (Liveness: {confidence:.2f})")
+            return
+            
+        if employee_id == "UNKNOWN":
+            print(f"[{camera_id}] Wajah tidak dikenal (Confidence: {confidence:.2f})")
+            return
+            
+        if employee_id:
+            # Tentukan eventType berdasarkan waktu
+            event_type = get_event_type(employee_id)
+            
+            # Abaikan jika di luar jam absensi
+            if not event_type:
+                print(f"[{camera_id}] Dikenali sebagai {employee_id}, tapi ditolak karena di luar jam absen.")
+                return
+                
+            # Rate limiter / cooldown
+            if not is_action_allowed_by_cooldown(employee_id, event_type):
+                print(f"[{camera_id}] Dikenali sebagai {employee_id} (Cooldown aktif)")
+                return
+                
+            print(f"[{camera_id}] Memproses: {employee_id} ({event_type})")
+            
+            # Pre-emptively update cache
+            cache_key = f"{employee_id}_{event_type}"
+            last_event_status_cache[cache_key] = {'time': time.time()}
+            
+            # Upload gambar ke Supabase Storage (snapshots)
+            thumb_url = None
+            if supabase:
+                try:
+                    success, buffer = cv2.imencode('.jpg', face_img)
+                    if success:
+                        file_bytes = buffer.tobytes()
+                        file_name = f"snapshots/{uuid.uuid4()}.jpg"
+                        
+                        supabase.storage.from_("recognition").upload(
+                            file_name, 
+                            file_bytes,
+                            {"content-type": "image/jpeg"}
+                        )
+                        thumb_url = supabase.storage.from_("recognition").get_public_url(file_name)
+                except Exception as upload_err:
+                    print(f"[Supabase Error] Gagal upload gambar: {upload_err}")
+                    
+            # Kirim ke API
+            send_to_backend(employee_id, camera_id, confidence, thumb_url, event_type)
+    finally:
+        with _camera_lock:
+            _camera_busy[camera_id] = False
 
 def start_stream_listener():
     print(f"Menghubungkan ke stream SSE: {DETECTION_STREAM_URL} ...")
@@ -197,67 +359,22 @@ def start_stream_listener():
                         face_tensor = face_tensor_1d.reshape((112, 112, 3))
                         face_img = ((face_tensor + 1.0) * 127.5).astype(np.uint8)
                     else:
-                        # Format baru kemungkinan JPEG terkompresi
                         np_arr = np.frombuffer(raw_bytes, np.uint8)
                         face_img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
                         if face_img is None:
                             print("Gagal mendecode gambar wajah dari stream")
                             continue
                     
-                    
-                    # Lakukan recognition
-                    print(f"[{camera_id}] Menerima wajah, memproses AI...")
-                    employee_id, confidence = recognize_face(face_img)
-                    
-                    if employee_id == "UNKNOWN":
-                        print(f"[{camera_id}] Wajah tidak dikenal (Confidence: {confidence:.2f})")
-                        continue
-                        
-                    if employee_id:
-                        # Tentukan eventType berdasarkan waktu
-                        event_type = get_event_type()
-                        
-                        # Abaikan jika di luar jam absensi (jam 12:00 - 16:59)
-                        if not event_type:
-                            print(f"[{camera_id}] Dikenali sebagai {employee_id}, tapi ditolak karena di luar jam absen.")
+                    with _camera_lock:
+                        if _camera_busy.get(camera_id, False):
                             continue
-                            
-                        # Rate limiter / cooldown
-                        if not is_action_allowed_by_cooldown(employee_id, event_type):
-                            print(f"[{camera_id}] Dikenali sebagai {employee_id} (Cooldown aktif)")
-                            continue
-                            
-                        print(f"[{camera_id}] Memproses: {employee_id} ({event_type})")
-                        
-                        # Pre-emptively update cache to prevent duplicate thread spawning
-                        cache_key = f"{employee_id}_{event_type}"
-                        last_event_status_cache[cache_key] = {'time': time.time()}
-                        
-                        def process_upload_and_send(emp_id, cam_id, conf, img, evt_type):
-                            # Upload gambar ke Supabase Storage (snapshots)
-                            thumb_url = None
-                            if supabase:
-                                try:
-                                    success, buffer = cv2.imencode('.jpg', img)
-                                    if success:
-                                        file_bytes = buffer.tobytes()
-                                        file_name = f"snapshots/{uuid.uuid4()}.jpg"
-                                        
-                                        # Gunakan content-type agar browser bisa merender dengan benar
-                                        supabase.storage.from_("recognition").upload(
-                                            file_name, 
-                                            file_bytes,
-                                            {"content-type": "image/jpeg"}
-                                        )
-                                        thumb_url = supabase.storage.from_("recognition").get_public_url(file_name)
-                                except Exception as upload_err:
-                                    print(f"[Supabase Error] Gagal upload gambar: {upload_err}")
-                                    
-                            # Kirim ke API
-                            send_to_backend(emp_id, cam_id, conf, thumb_url, evt_type)
-                            
-                        # Offload blocking IO to background thread
-                        executor.submit(process_upload_and_send, employee_id, camera_id, confidence, face_img, event_type)
+                        _camera_busy[camera_id] = True
+
+                    threading.Thread(
+                        target=process_worker,
+                        args=(camera_id, face_img),
+                        daemon=True,
+                    ).start()
                         
                 except json.JSONDecodeError:
                     pass
