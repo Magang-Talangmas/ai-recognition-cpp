@@ -11,7 +11,7 @@ services:
       - "8189:8189/tcp" # WebRTC ICE TCP
     environment:
       - MTX_PROTOCOLS=tcp
-      - MTX_WEBRTCADDITIONALHOSTS=192.168.77.171
+      - MTX_WEBRTCADDITIONALHOSTS=192.168.99.56
     restart: unless-stopped
 
   redis:
