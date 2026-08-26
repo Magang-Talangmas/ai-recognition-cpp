@@ -8,7 +8,7 @@ Infrastruktur ini didesain menggunakan **MediaMTX** (Go-based media server) deng
 
 ## 🏗 Arsitektur Sistem
 
-1. **Ingest (Streaming In):** Skrip `stream_publisher.py` menarik RTSP stream mentah dari IP Camera.
+1. **Ingest (Streaming In):** Skrip `publisher.py` menarik RTSP stream mentah dari IP Camera.
 2. **Preprocessing (Aspect Ratio):** OpenCV secara otomatis menyesuaikan rasio kamera menjadi standar **16:9** (menambahkan *pillarbox/letterbox* hitam) agar seragam di semua klien, tanpa mengubah bentuk (*stretch*) wajah.
 3. **Media Server:** FFmpeg mem-*publish* video tersebut ke server lokal **MediaMTX** (`rtsp://localhost:8554/stream`).
 4. **Distribusi (Streaming Out):** MediaMTX secara *real-time* memecah *stream* tersebut ke dalam berbagai protokol (RTSP untuk backend AI, WebRTC & HLS untuk Frontend).
@@ -53,7 +53,7 @@ docker-compose up -d mediamtx
 ### 4. Memulai Siaran (Publisher)
 Jalankan skrip untuk menarik video dari kamera dan mengirimkannya ke Media Server:
 ```bash
-python stream_publisher.py
+python publisher.py
 ```
 *(Biarkan terminal ini tetap berjalan. Anda akan melihat preview lokal dan log FPS)*.
 
