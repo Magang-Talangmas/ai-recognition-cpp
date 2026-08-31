@@ -1,295 +1,462 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Stream Test Harness — WebRTC/HLS Playback</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
-<style>
-  :root{
-    --bg:#0a0e13;
-    --panel:#111820;
-    --panel-2:#161f29;
-    --border:#233040;
-    --text:#e7edf5;
-    --text-dim:#7f8fa3;
-    --cyan:#2dd4dd;
-    --amber:#f2a340;
-    --red:#e5555c;
-    --green:#3ecf8e;
-    --mono:'JetBrains Mono', 'SF Mono', Consolas, monospace;
-    --sans:'Inter', -apple-system, sans-serif;
-  }
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stream Test Harness — WebRTC/HLS Playback</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+  <style>
+    :root {
+      --bg: #0a0e13;
+      --panel: #111820;
+      --panel-2: #161f29;
+      --border: #233040;
+      --text: #e7edf5;
+      --text-dim: #7f8fa3;
+      --cyan: #2dd4dd;
+      --amber: #f2a340;
+      --red: #e5555c;
+      --green: #3ecf8e;
+      --mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+      --sans: 'Inter', -apple-system, sans-serif;
+    }
 
-  *{box-sizing:border-box;}
-  body{
-    margin:0;
-    background:
-      radial-gradient(circle at 15% 0%, rgba(45,212,221,0.06), transparent 40%),
-      var(--bg);
-    color:var(--text);
-    font-family:var(--sans);
-    padding:28px 24px 60px;
-  }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-  .wrap{max-width:1180px;margin:0 auto;}
+    * {
+      box-sizing: border-box;
+    }
 
-  header{margin-bottom:28px;border-bottom:1px solid var(--border);padding-bottom:20px;}
-  .eyebrow{
-    font-family:var(--mono);
-    font-size:11px;
-    letter-spacing:0.14em;
-    color:var(--cyan);
-    text-transform:uppercase;
-    margin-bottom:8px;
-  }
-  h1{font-size:26px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em;}
-  .sub{color:var(--text-dim);font-size:14px;max-width:640px;line-height:1.5;}
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 0%, rgba(45, 212, 221, 0.06), transparent 40%),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      padding: 28px 24px 60px;
+    }
 
-  .panel{
-    background:var(--panel);
-    border:1px solid var(--border);
-    border-radius:10px;
-    padding:18px 20px;
-    margin-bottom:20px;
-  }
-  .panel h2{
-    font-size:12px;text-transform:uppercase;letter-spacing:0.08em;
-    color:var(--text-dim);margin:0 0 14px;font-weight:600;
-  }
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
 
-  .config-row{
-    display:grid;
-    grid-template-columns:1fr 1fr 1fr auto;
-    gap:10px;
-    margin-bottom:10px;
-  }
-  .config-row.server{grid-template-columns:1fr 1fr;}
-  label{
-    display:block;font-size:11px;color:var(--text-dim);
-    margin-bottom:4px;font-family:var(--mono);
-  }
-  input[type=text]{
-    width:100%;
-    background:var(--panel-2);
-    border:1px solid var(--border);
-    border-radius:6px;
-    color:var(--text);
-    padding:8px 10px;
-    font-family:var(--mono);
-    font-size:13px;
-    outline:none;
-  }
-  input[type=text]:focus{border-color:var(--cyan);}
+    header {
+      margin-bottom: 28px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+    }
 
-  button{
-    font-family:var(--sans);
-    font-weight:600;
-    font-size:13px;
-    border-radius:6px;
-    border:1px solid var(--border);
-    background:var(--panel-2);
-    color:var(--text);
-    padding:9px 16px;
-    cursor:pointer;
-    transition:border-color .15s, background .15s;
-  }
-  button:hover{border-color:var(--cyan);}
-  button.primary{
-    background:var(--cyan);
-    color:#04202a;
-    border-color:var(--cyan);
-  }
-  button.primary:hover{filter:brightness(1.08);}
-  button.ghost{background:transparent;}
-  button.small{padding:5px 10px;font-size:12px;}
-  .remove-btn{align-self:end;color:var(--red);border-color:var(--border);}
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      color: var(--cyan);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
 
-  .actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      margin: 0 0 6px;
+      letter-spacing: -0.01em;
+    }
 
-  .grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));
-    gap:18px;
-    margin-bottom:24px;
-  }
+    .sub {
+      color: var(--text-dim);
+      font-size: 14px;
+      max-width: 640px;
+      line-height: 1.5;
+    }
 
-  .cam-card{
-    background:var(--panel);
-    border:1px solid var(--border);
-    border-radius:10px;
-    overflow:hidden;
-    display:flex;
-    flex-direction:column;
-  }
-  .cam-video-wrap{
-    position:relative;
-    background:#000;
-    aspect-ratio:4/3;
-    display:flex;align-items:center;justify-content:center;
-  }
-  .cam-video-wrap.crop-16-9{aspect-ratio:16/9;}
-  video{
-    width:100%;height:100%;
-    background:#000;
-    object-fit:contain;
-  }
-  .cam-video-wrap.crop-16-9 video{object-fit:cover;}
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+    }
 
-  .badge{
-    position:absolute;top:10px;left:10px;
-    font-family:var(--mono);font-size:11px;font-weight:600;
-    padding:4px 9px;border-radius:20px;
-    background:rgba(0,0,0,0.65);
-    border:1px solid var(--border);
-    display:flex;align-items:center;gap:6px;
-  }
-  .dot{width:7px;height:7px;border-radius:50%;background:var(--text-dim);}
-  .badge.connecting .dot{background:var(--amber);animation:pulse 1s infinite;}
-  .badge.webrtc .dot{background:var(--cyan);}
-  .badge.hls .dot{background:var(--amber);}
-  .badge.failed .dot{background:var(--red);}
-  @keyframes pulse{50%{opacity:0.3;}}
+    .panel h2 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin: 0 0 14px;
+      font-weight: 600;
+    }
 
-  .cam-meta{
-    padding:12px 14px;
-    font-family:var(--mono);
-    font-size:12px;
-    color:var(--text-dim);
-    display:flex;
-    flex-direction:column;
-    gap:4px;
-    border-top:1px solid var(--border);
-  }
-  .cam-meta .name{color:var(--text);font-size:13px;font-weight:600;font-family:var(--sans);}
-  .cam-meta .row{display:flex;justify-content:space-between;}
-  .cam-meta .row span:last-child{color:var(--text);}
+    .config-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
 
-  .cam-controls{
-    display:flex;justify-content:space-between;align-items:center;
-    padding:10px 14px;border-top:1px solid var(--border);
-    gap:8px;
-  }
-  .switch-label{
-    display:flex;align-items:center;gap:6px;
-    font-size:11px;color:var(--text-dim);font-family:var(--mono);
-    cursor:pointer;
-  }
+    .config-row.server {
+      grid-template-columns: 1fr 1fr;
+    }
 
-  .bottom-grid{
-    display:grid;
-    grid-template-columns:280px 1fr;
-    gap:18px;
-  }
-  @media (max-width:720px){.bottom-grid{grid-template-columns:1fr;}}
+    label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      font-family: var(--mono);
+    }
 
-  .clock{
-    font-family:var(--mono);
-    font-size:28px;
-    font-weight:700;
-    color:var(--cyan);
-    text-align:center;
-    padding:20px 10px;
-    letter-spacing:0.02em;
-  }
-  .clock-hint{
-    font-size:11px;color:var(--text-dim);text-align:center;
-    line-height:1.5;margin-top:4px;
-  }
+    input[type=text] {
+      width: 100%;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 8px 10px;
+      font-family: var(--mono);
+      font-size: 13px;
+      outline: none;
+    }
 
-  .log{
-    font-family:var(--mono);
-    font-size:11.5px;
-    height:180px;
-    overflow-y:auto;
-    background:var(--panel-2);
-    border:1px solid var(--border);
-    border-radius:6px;
-    padding:10px 12px;
-    line-height:1.7;
-  }
-  .log .line{white-space:pre-wrap;word-break:break-all;}
-  .log .line.err{color:var(--red);}
-  .log .line.ok{color:var(--green);}
-  .log .line.warn{color:var(--amber);}
-  .log .ts{color:var(--text-dim);margin-right:6px;}
-</style>
+    input[type=text]:focus {
+      border-color: var(--cyan);
+    }
+
+    button {
+      font-family: var(--sans);
+      font-weight: 600;
+      font-size: 13px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 9px 16px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+
+    button:hover {
+      border-color: var(--cyan);
+    }
+
+    button.primary {
+      background: var(--cyan);
+      color: #04202a;
+      border-color: var(--cyan);
+    }
+
+    button.primary:hover {
+      filter: brightness(1.08);
+    }
+
+    button.ghost {
+      background: transparent;
+    }
+
+    button.small {
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+
+    .remove-btn {
+      align-self: end;
+      color: var(--red);
+      border-color: var(--border);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+
+    .cam-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cam-video-wrap {
+      position: relative;
+      background: #000;
+      aspect-ratio: 4/3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .cam-video-wrap.crop-16-9 {
+      aspect-ratio: 16/9;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      object-fit: contain;
+    }
+
+    .cam-video-wrap.crop-16-9 video {
+      object-fit: cover;
+    }
+
+    .overlay-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .badge {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 9px;
+      border-radius: 20px;
+      background: rgba(0, 0, 0, 0.65);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+
+    .badge.connecting .dot {
+      background: var(--amber);
+      animation: pulse 1s infinite;
+    }
+
+    .badge.webrtc .dot {
+      background: var(--cyan);
+    }
+
+    .badge.hls .dot {
+      background: var(--amber);
+    }
+
+    .badge.failed .dot {
+      background: var(--red);
+    }
+
+    @keyframes pulse {
+      50% {
+        opacity: 0.3;
+      }
+    }
+
+    .cam-meta {
+      padding: 12px 14px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-dim);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border-top: 1px solid var(--border);
+    }
+
+    .cam-meta .name {
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      font-family: var(--sans);
+    }
+
+    .cam-meta .row {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .cam-meta .row span:last-child {
+      color: var(--text);
+    }
+
+    .cam-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      gap: 8px;
+    }
+
+    .switch-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      cursor: pointer;
+    }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 18px;
+    }
+
+    @media (max-width:720px) {
+      .bottom-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .clock {
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--cyan);
+      text-align: center;
+      padding: 20px 10px;
+      letter-spacing: 0.02em;
+    }
+
+    .clock-hint {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-align: center;
+      line-height: 1.5;
+      margin-top: 4px;
+    }
+
+    .log {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      height: 180px;
+      overflow-y: auto;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      line-height: 1.7;
+    }
+
+    .log .line {
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log .line.err {
+      color: var(--red);
+    }
+
+    .log .line.ok {
+      color: var(--green);
+    }
+
+    .log .line.warn {
+      color: var(--amber);
+    }
+
+    .log .ts {
+      color: var(--text-dim);
+      margin-right: 6px;
+    }
+  </style>
 </head>
+
 <body>
-<div class="wrap">
+  <div class="wrap">
 
-  <header>
-    <div class="eyebrow">Stream Team // Pra-handoff FE</div>
-    <h1>Stream Test Harness</h1>
-    <p class="sub">Validasi playback WebRTC/HLS dari MediaMTX untuk 2–3 kamera sekaligus, sebelum FE team mulai integrasi. Cek konektivitas, resolusi sumber, dan tampilan crop 16:9 di sini dulu.</p>
-  </header>
+    <header>
+      <div class="eyebrow">Stream Team // Pra-handoff FE</div>
+      <h1>Stream Test Harness</h1>
+      <p class="sub">Validasi playback WebRTC/HLS dari MediaMTX untuk 2–3 kamera sekaligus, sebelum FE team mulai
+        integrasi. Cek konektivitas, resolusi sumber, dan tampilan crop 16:9 di sini dulu.</p>
+    </header>
 
-  <div class="panel">
-    <h2>Konfigurasi Server</h2>
-    <div class="config-row server">
-      <div>
-        <label>Host WebRTC (MediaMTX, port 8889)</label>
-        <input type="text" id="webrtcHost" placeholder="192.168.1.10:8889" value="">
-      </div>
-      <div>
-        <label>Host HLS (fallback, port 8888)</label>
-        <input type="text" id="hlsHost" placeholder="192.168.1.10:8888" value="">
-      </div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h2>Daftar Kamera</h2>
-    <div id="camConfigList"></div>
-    <div class="actions">
-      <button class="ghost" id="addCamBtn">+ Tambah kamera</button>
-      <button class="primary" id="connectAllBtn">Connect semua kamera</button>
-      <button class="ghost" id="disconnectAllBtn">Disconnect semua</button>
-    </div>
-  </div>
-
-  <div class="grid" id="videoGrid"></div>
-
-  <div class="bottom-grid">
     <div class="panel">
-      <h2>Live Clock (cek latency manual)</h2>
-      <div class="clock" id="liveClock">00:00:00.000</div>
-      <div class="clock-hint">Arahkan kamera ke layar ini (atau sebaliknya), bandingkan angka di jam ini dengan yang tampil di video untuk estimasi latency kasar.</div>
+      <h2>Konfigurasi Server</h2>
+      <div class="config-row server">
+        <div>
+          <label>Host WebRTC (MediaMTX, port 8889)</label>
+          <input type="text" id="webrtcHost" placeholder="192.168.1.10:8889" value="">
+        </div>
+        <div>
+          <label>Host HLS (fallback, port 8888)</label>
+          <input type="text" id="hlsHost" placeholder="192.168.1.10:8888" value="">
+        </div>
+      </div>
     </div>
+
     <div class="panel">
-      <h2>Log Event</h2>
-      <div class="log" id="logPanel"></div>
+      <h2>Daftar Kamera</h2>
+      <div id="camConfigList"></div>
+      <div class="actions">
+        <button class="ghost" id="addCamBtn">+ Tambah kamera</button>
+        <button class="primary" id="connectAllBtn">Connect semua kamera</button>
+        <button class="ghost" id="disconnectAllBtn">Disconnect semua</button>
+      </div>
     </div>
+
+    <div class="grid" id="videoGrid"></div>
+
+    <div class="bottom-grid">
+      <div class="panel">
+        <h2>Live Clock (cek latency manual)</h2>
+        <div class="clock" id="liveClock">00:00:00.000</div>
+        <div class="clock-hint">Arahkan kamera ke layar ini (atau sebaliknya), bandingkan angka di jam ini dengan yang
+          tampil di video untuk estimasi latency kasar.</div>
+      </div>
+      <div class="panel">
+        <h2>Log Event</h2>
+        <div class="log" id="logPanel"></div>
+      </div>
+    </div>
+
   </div>
 
-</div>
+  <script>
+    const camConfigList = document.getElementById('camConfigList');
+    const videoGrid = document.getElementById('videoGrid');
+    const logPanel = document.getElementById('logPanel');
 
-<script>
-const camConfigList = document.getElementById('camConfigList');
-const videoGrid = document.getElementById('videoGrid');
-const logPanel = document.getElementById('logPanel');
+    let camCounter = 0;
+    const activeConnections = {}; // id -> { pc, hls, timeoutId }
 
-let camCounter = 0;
-const activeConnections = {}; // id -> { pc, hls, timeoutId }
+    function log(msg, type = '') {
+      const now = new Date();
+      const ts = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+      const line = document.createElement('div');
+      line.className = 'line' + (type ? ' ' + type : '');
+      line.innerHTML = `<span class="ts">${ts}</span>${msg}`;
+      logPanel.appendChild(line);
+      logPanel.scrollTop = logPanel.scrollHeight;
+    }
 
-function log(msg, type=''){
-  const now = new Date();
-  const ts = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3,'0');
-  const line = document.createElement('div');
-  line.className = 'line' + (type ? ' ' + type : '');
-  line.innerHTML = `<span class="ts">${ts}</span>${msg}`;
-  logPanel.appendChild(line);
-  logPanel.scrollTop = logPanel.scrollHeight;
-}
-
-function addCameraRow(defaultName, defaultPath){
-  camCounter++;
-  const id = 'cam' + camCounter;
-  const row = document.createElement('div');
-  row.className = 'config-row';
-  row.dataset.id = id;
-  row.innerHTML = `
+    function addCameraRow(defaultName, defaultPath) {
+      camCounter++;
+      const id = 'cam' + camCounter;
+      const row = document.createElement('div');
+      row.className = 'config-row';
+      row.dataset.id = id;
+      row.innerHTML = `
     <div>
       <label>Nama kamera</label>
       <input type="text" class="cam-name" value="${defaultName || 'Kamera ' + camCounter}">
@@ -299,44 +466,46 @@ function addCameraRow(defaultName, defaultPath){
       <input type="text" class="cam-path" placeholder="cam${camCounter}" value="${defaultPath || ''}">
     </div>
     <div>
-      <label>&nbsp;</label>
-      <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);padding-top:8px;">id: ${id}</div>
+      <label>URL BBox SSE (Opsional)</label>
+      <input type="text" class="cam-sse" placeholder="http://.../live-bbox/cam_01" value="">
     </div>
     <button class="remove-btn small" data-remove="${id}">Hapus</button>
   `;
-  camConfigList.appendChild(row);
-  row.querySelector('[data-remove]').addEventListener('click', () => {
-    disconnectCamera(id);
-    row.remove();
-    const card = document.getElementById('card-' + id);
-    if (card) card.remove();
-  });
-}
+      camConfigList.appendChild(row);
+      row.querySelector('[data-remove]').addEventListener('click', () => {
+        disconnectCamera(id);
+        row.remove();
+        const card = document.getElementById('card-' + id);
+        if (card) card.remove();
+      });
+    }
 
-document.getElementById('addCamBtn').addEventListener('click', () => addCameraRow());
+    document.getElementById('addCamBtn').addEventListener('click', () => addCameraRow());
 
-// default: 2 baris kamera siap pakai, tinggal isi path
-addCameraRow('Kamera 1', 'cam1');
-addCameraRow('Kamera 2', 'cam2');
+    // default: 2 baris kamera siap pakai, tinggal isi path
+    addCameraRow('Kamera 1', 'cam1');
+    addCameraRow('Kamera 2', 'cam2');
 
-function getCamConfigs(){
-  return Array.from(camConfigList.children).map(row => ({
-    id: row.dataset.id,
-    name: row.querySelector('.cam-name').value.trim() || row.dataset.id,
-    path: row.querySelector('.cam-path').value.trim()
-  })).filter(c => c.path);
-}
+    function getCamConfigs() {
+      return Array.from(camConfigList.children).map(row => ({
+        id: row.dataset.id,
+        name: row.querySelector('.cam-name').value.trim() || row.dataset.id,
+        path: row.querySelector('.cam-path').value.trim(),
+        sseUrl: row.querySelector('.cam-sse').value.trim()
+      })).filter(c => c.path);
+    }
 
-function ensureCard(cam){
-  let card = document.getElementById('card-' + cam.id);
-  if (card) return card;
+    function ensureCard(cam) {
+      let card = document.getElementById('card-' + cam.id);
+      if (card) return card;
 
-  card = document.createElement('div');
-  card.className = 'cam-card';
-  card.id = 'card-' + cam.id;
-  card.innerHTML = `
-    <div class="cam-video-wrap" id="wrap-${cam.id}">
+      card = document.createElement('div');
+      card.className = 'cam-card';
+      card.id = 'card-' + cam.id;
+      card.innerHTML = `
+    <div class="cam-video-wrap crop-16-9" id="wrap-${cam.id}">
       <video id="video-${cam.id}" autoplay muted playsinline></video>
+      <canvas id="canvas-${cam.id}" class="overlay-canvas"></canvas>
       <div class="badge connecting" id="badge-${cam.id}"><div class="dot"></div><span>Menyambungkan</span></div>
     </div>
     <div class="cam-meta">
@@ -347,213 +516,302 @@ function ensureCard(cam){
     </div>
     <div class="cam-controls">
       <label class="switch-label">
-        <input type="checkbox" id="crop-${cam.id}"> Simulasikan crop 16:9
+        <input type="checkbox" id="crop-${cam.id}" checked> Simulasikan crop 16:9
       </label>
       <button class="small" data-reconnect="${cam.id}">Reconnect</button>
     </div>
   `;
-  videoGrid.appendChild(card);
+      videoGrid.appendChild(card);
 
-  card.querySelector('[data-reconnect]').addEventListener('click', () => {
-    disconnectCamera(cam.id);
-    connectCamera(cam);
-  });
+      card.querySelector('[data-reconnect]').addEventListener('click', () => {
+        disconnectCamera(cam.id);
+        connectCamera(cam);
+      });
 
-  card.querySelector('#crop-' + cam.id).addEventListener('change', (e) => {
-    document.getElementById('wrap-' + cam.id).classList.toggle('crop-16-9', e.target.checked);
-  });
+      card.querySelector('#crop-' + cam.id).addEventListener('change', (e) => {
+        document.getElementById('wrap-' + cam.id).classList.toggle('crop-16-9', e.target.checked);
+      });
 
-  return card;
-}
+      return card;
+    }
 
-function setBadge(id, state, text){
-  const badge = document.getElementById('badge-' + id);
-  if (!badge) return;
-  badge.className = 'badge ' + state;
-  badge.querySelector('span').textContent = text;
-}
+    function setBadge(id, state, text) {
+      const badge = document.getElementById('badge-' + id);
+      if (!badge) return;
+      badge.className = 'badge ' + state;
+      badge.querySelector('span').textContent = text;
+    }
 
-function updateResolution(id){
-  const video = document.getElementById('video-' + id);
-  const resEl = document.getElementById('res-' + id);
-  if (video && resEl && video.videoWidth){
-    resEl.textContent = `${video.videoWidth} x ${video.videoHeight}`;
-  }
-}
-
-async function waitIceGatheringComplete(pc, timeoutMs=3000){
-  if (pc.iceGatheringState === 'complete') return;
-  await new Promise((resolve) => {
-    const timer = setTimeout(resolve, timeoutMs);
-    function check(){
-      if (pc.iceGatheringState === 'complete'){
-        clearTimeout(timer);
-        pc.removeEventListener('icegatheringstatechange', check);
-        resolve();
+    function updateResolution(id) {
+      const video = document.getElementById('video-' + id);
+      const resEl = document.getElementById('res-' + id);
+      if (video && resEl && video.videoWidth) {
+        resEl.textContent = `${video.videoWidth} x ${video.videoHeight}`;
       }
     }
-    pc.addEventListener('icegatheringstatechange', check);
-  });
-}
 
-async function connectWebRTC(cam, webrtcHost){
-  const video = document.getElementById('video-' + cam.id);
-  const whepUrl = `http://${webrtcHost}/${cam.path}/whep`;
-
-  const pc = new RTCPeerConnection({ iceServers: [] });
-  activeConnections[cam.id] = activeConnections[cam.id] || {};
-  activeConnections[cam.id].pc = pc;
-
-  pc.ontrack = (event) => {
-    if (video.srcObject !== event.streams[0]){
-      video.srcObject = event.streams[0];
-      video.addEventListener('loadedmetadata', () => updateResolution(cam.id), { once:true });
-      video.addEventListener('resize', () => updateResolution(cam.id));
+    async function waitIceGatheringComplete(pc, timeoutMs = 3000) {
+      if (pc.iceGatheringState === 'complete') return;
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, timeoutMs);
+        function check() {
+          if (pc.iceGatheringState === 'complete') {
+            clearTimeout(timer);
+            pc.removeEventListener('icegatheringstatechange', check);
+            resolve();
+          }
+        }
+        pc.addEventListener('icegatheringstatechange', check);
+      });
     }
-  };
 
-  pc.addTransceiver('video', { direction: 'recvonly' });
-  pc.addTransceiver('audio', { direction: 'recvonly' });
+    async function connectWebRTC(cam, webrtcHost) {
+      const video = document.getElementById('video-' + cam.id);
+      const whepUrl = `http://${webrtcHost}/${cam.path}/whep`;
 
-  pc.onconnectionstatechange = () => {
-    log(`[${cam.name}] WebRTC state: ${pc.connectionState}`, pc.connectionState === 'failed' ? 'err' : '');
-    if (pc.connectionState === 'connected'){
-      setBadge(cam.id, 'webrtc', 'WebRTC');
-      document.getElementById('proto-' + cam.id).textContent = 'WebRTC';
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      activeConnections[cam.id] = activeConnections[cam.id] || {};
+      activeConnections[cam.id].pc = pc;
+
+      pc.ontrack = (event) => {
+        if (video.srcObject !== event.streams[0]) {
+          video.srcObject = event.streams[0];
+          video.addEventListener('loadedmetadata', () => updateResolution(cam.id), { once: true });
+          video.addEventListener('resize', () => updateResolution(cam.id));
+        }
+      };
+
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+
+      pc.onconnectionstatechange = () => {
+        log(`[${cam.name}] WebRTC state: ${pc.connectionState}`, pc.connectionState === 'failed' ? 'err' : '');
+        if (pc.connectionState === 'connected') {
+          setBadge(cam.id, 'webrtc', 'WebRTC');
+          document.getElementById('proto-' + cam.id).textContent = 'WebRTC';
+        }
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await waitIceGatheringComplete(pc);
+
+      const response = await fetch(whepUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/sdp' },
+        body: pc.localDescription.sdp
+      });
+
+      if (!response.ok) {
+        throw new Error(`WHEP HTTP ${response.status}`);
+      }
+
+      const answerSdp = await response.text();
+      await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+
+      log(`[${cam.name}] WHEP offer/answer sukses, menunggu koneksi ICE...`, 'ok');
     }
-  };
 
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  await waitIceGatheringComplete(pc);
+    function connectHLS(cam, hlsHost) {
+      const video = document.getElementById('video-' + cam.id);
+      const hlsUrl = `http://${hlsHost}/${cam.path}/index.m3u8`;
 
-  const response = await fetch(whepUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/sdp' },
-    body: pc.localDescription.sdp
-  });
+      setBadge(cam.id, 'hls', 'HLS fallback');
+      document.getElementById('proto-' + cam.id).textContent = 'HLS (fallback)';
+      log(`[${cam.name}] Fallback ke HLS: ${hlsUrl}`, 'warn');
 
-  if (!response.ok){
-    throw new Error(`WHEP HTTP ${response.status}`);
-  }
-
-  const answerSdp = await response.text();
-  await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-
-  log(`[${cam.name}] WHEP offer/answer sukses, menunggu koneksi ICE...`, 'ok');
-}
-
-function connectHLS(cam, hlsHost){
-  const video = document.getElementById('video-' + cam.id);
-  const hlsUrl = `http://${hlsHost}/${cam.path}/index.m3u8`;
-
-  setBadge(cam.id, 'hls', 'HLS fallback');
-  document.getElementById('proto-' + cam.id).textContent = 'HLS (fallback)';
-  log(`[${cam.name}] Fallback ke HLS: ${hlsUrl}`, 'warn');
-
-  if (window.Hls && Hls.isSupported()){
-    const hls = new Hls();
-    activeConnections[cam.id] = activeConnections[cam.id] || {};
-    activeConnections[cam.id].hls = hls;
-    hls.loadSource(hlsUrl);
-    hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      video.play().catch(()=>{});
-    });
-    hls.on(Hls.Events.ERROR, (evt, data) => {
-      if (data.fatal){
-        log(`[${cam.name}] HLS error: ${data.type} / ${data.details}`, 'err');
+      if (window.Hls && Hls.isSupported()) {
+        const hls = new Hls();
+        activeConnections[cam.id] = activeConnections[cam.id] || {};
+        activeConnections[cam.id].hls = hls;
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(() => { });
+        });
+        hls.on(Hls.Events.ERROR, (evt, data) => {
+          if (data.fatal) {
+            log(`[${cam.name}] HLS error: ${data.type} / ${data.details}`, 'err');
+            setBadge(cam.id, 'failed', 'Gagal');
+          }
+        });
+        video.addEventListener('loadedmetadata', () => updateResolution(cam.id), { once: true });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = hlsUrl;
+        video.addEventListener('loadedmetadata', () => updateResolution(cam.id), { once: true });
+      } else {
+        log(`[${cam.name}] Browser tidak mendukung HLS.`, 'err');
         setBadge(cam.id, 'failed', 'Gagal');
       }
+    }
+
+    async function connectCamera(cam) {
+      const webrtcHost = document.getElementById('webrtcHost').value.trim();
+      const hlsHost = document.getElementById('hlsHost').value.trim();
+
+      ensureCard(cam);
+      setBadge(cam.id, 'connecting', 'Menyambungkan');
+      document.getElementById('res-' + cam.id).textContent = '—';
+      document.getElementById('proto-' + cam.id).textContent = '—';
+
+      if (!webrtcHost) {
+        log('Isi dulu Host WebRTC di Konfigurasi Server.', 'err');
+        setBadge(cam.id, 'failed', 'Gagal');
+        return;
+      }
+
+      log(`[${cam.name}] Mencoba WebRTC...`);
+
+      const fallbackTimer = setTimeout(() => {
+        log(`[${cam.name}] WebRTC timeout, coba fallback HLS.`, 'warn');
+        if (hlsHost) connectHLS(cam, hlsHost);
+        else { setBadge(cam.id, 'failed', 'Gagal'); log(`[${cam.name}] Host HLS belum diisi, tidak ada fallback.`, 'err'); }
+      }, 6000);
+
+      activeConnections[cam.id] = activeConnections[cam.id] || {};
+      activeConnections[cam.id].timeoutId = fallbackTimer;
+
+      try {
+        await connectWebRTC(cam, webrtcHost);
+        clearTimeout(fallbackTimer);
+      } catch (err) {
+        clearTimeout(fallbackTimer);
+        log(`[${cam.name}] WebRTC gagal: ${err.message}`, 'err');
+        if (hlsHost) connectHLS(cam, hlsHost);
+        else { setBadge(cam.id, 'failed', 'Gagal'); }
+      }
+
+      if (cam.sseUrl) {
+        log(`[${cam.name}] Listen ke BBox SSE: ${cam.sseUrl}`);
+        const sse = new EventSource(cam.sseUrl);
+        activeConnections[cam.id].sse = sse;
+        sse.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.status === "connected") return;
+
+            let faces = [];
+            if (data.bounding_box) {
+              faces.push({
+                x: data.bounding_box.x,
+                y: data.bounding_box.y,
+                w: data.bounding_box.width,
+                h: data.bounding_box.height,
+                label: data.name
+              });
+            } else if (data.faces) {
+              faces = data.faces;
+            } else if (Array.isArray(data)) {
+              faces = data;
+            }
+
+            // Kalkulasi resolusi source 16:9 berdasarkan resolusi asli video jika tidak ada dari JSON
+            const video = document.getElementById('video-' + cam.id);
+            let srcW = data.source_width || 1;
+            let srcH = data.source_height || 1;
+
+            if (srcW === 1 && srcH === 1 && video && video.videoWidth) {
+              const vw = video.videoWidth;
+              const vh = video.videoHeight;
+              const targetRatio = 16 / 9;
+              const currentRatio = vw / vh;
+              if (currentRatio < targetRatio) {
+                // Terlalu kotak, AI melakukan crop atas-bawah
+                srcW = vw;
+                srcH = vw / targetRatio;
+              } else {
+                // Terlalu lebar, AI melakukan crop kiri-kanan
+                srcH = vh;
+                srcW = vh * targetRatio;
+              }
+            }
+
+            drawBBox(cam.id, faces, srcW, srcH);
+          } catch (err) {
+            console.error("SSE parse error", err);
+          }
+        };
+        sse.onerror = () => log(`[${cam.name}] SSE BBox terputus.`, 'err');
+      }
+    }
+
+    function disconnectCamera(id) {
+      const conn = activeConnections[id];
+      if (!conn) return;
+      if (conn.timeoutId) clearTimeout(conn.timeoutId);
+      if (conn.pc) conn.pc.close();
+      if (conn.hls) conn.hls.destroy();
+      if (conn.sse) { conn.sse.close(); }
+      const video = document.getElementById('video-' + id);
+      if (video) { video.srcObject = null; video.src = ''; }
+      const canvas = document.getElementById('canvas-' + id);
+      if (canvas) { canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height); }
+      delete activeConnections[id];
+    }
+
+    document.getElementById('connectAllBtn').addEventListener('click', () => {
+      const cams = getCamConfigs();
+      if (!cams.length) {
+        log('Belum ada kamera dengan path yang diisi.', 'err');
+        return;
+      }
+      cams.forEach(cam => {
+        disconnectCamera(cam.id);
+        connectCamera(cam);
+      });
     });
-    video.addEventListener('loadedmetadata', () => updateResolution(cam.id), { once:true });
-  } else if (video.canPlayType('application/vnd.apple.mpegurl')){
-    video.src = hlsUrl;
-    video.addEventListener('loadedmetadata', () => updateResolution(cam.id), { once:true });
-  } else {
-    log(`[${cam.name}] Browser tidak mendukung HLS.`, 'err');
-    setBadge(cam.id, 'failed', 'Gagal');
-  }
-}
 
-async function connectCamera(cam){
-  const webrtcHost = document.getElementById('webrtcHost').value.trim();
-  const hlsHost = document.getElementById('hlsHost').value.trim();
+    document.getElementById('disconnectAllBtn').addEventListener('click', () => {
+      Object.keys(activeConnections).forEach(disconnectCamera);
+      log('Semua koneksi diputus.');
+    });
 
-  ensureCard(cam);
-  setBadge(cam.id, 'connecting', 'Menyambungkan');
-  document.getElementById('res-' + cam.id).textContent = '—';
-  document.getElementById('proto-' + cam.id).textContent = '—';
+    function drawBBox(camId, faces, srcW = 1, srcH = 1) {
+      // srcW & srcH default 1 jika data koordinat sudah relatif (0-1).
+      const canvas = document.getElementById('canvas-' + camId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
 
-  if (!webrtcHost){
-    log('Isi dulu Host WebRTC di Konfigurasi Server.', 'err');
-    setBadge(cam.id, 'failed', 'Gagal');
-    return;
-  }
+      // Resize canvas internal buffer to match its actual display size di UI
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
 
-  log(`[${cam.name}] Mencoba WebRTC...`);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const fallbackTimer = setTimeout(() => {
-    log(`[${cam.name}] WebRTC timeout, coba fallback HLS.`, 'warn');
-    if (hlsHost) connectHLS(cam, hlsHost);
-    else { setBadge(cam.id, 'failed', 'Gagal'); log(`[${cam.name}] Host HLS belum diisi, tidak ada fallback.`, 'err'); }
-  }, 6000);
+      if (!faces || !faces.length) return;
 
-  activeConnections[cam.id] = activeConnections[cam.id] || {};
-  activeConnections[cam.id].timeoutId = fallbackTimer;
+      faces.forEach(face => {
+        // Normalisasi jika koordinat berupa absolut pixel ( > 1 ), ubah jadi relatif (0-1).
+        let normX = face.x <= 1 ? face.x : face.x / srcW;
+        let normY = face.y <= 1 ? face.y : face.y / srcH;
+        let normW = face.w <= 1 ? face.w : face.w / srcW;
+        let normH = face.h <= 1 ? face.h : face.h / srcH;
 
-  try {
-    await connectWebRTC(cam, webrtcHost);
-    clearTimeout(fallbackTimer);
-  } catch (err){
-    clearTimeout(fallbackTimer);
-    log(`[${cam.name}] WebRTC gagal: ${err.message}`, 'err');
-    if (hlsHost) connectHLS(cam, hlsHost);
-    else { setBadge(cam.id, 'failed', 'Gagal'); }
-  }
-}
+        // Mapping ke ukuran canvas FE saat ini
+        let x = normX * canvas.width;
+        let y = normY * canvas.height;
+        let w = normW * canvas.width;
+        let h = normH * canvas.height;
+        ctx.strokeStyle = '#2dd4dd'; // Cyan
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+      });
+    }
 
-function disconnectCamera(id){
-  const conn = activeConnections[id];
-  if (!conn) return;
-  if (conn.timeoutId) clearTimeout(conn.timeoutId);
-  if (conn.pc) conn.pc.close();
-  if (conn.hls) conn.hls.destroy();
-  const video = document.getElementById('video-' + id);
-  if (video){ video.srcObject = null; video.src=''; }
-  delete activeConnections[id];
-}
+    function tickClock() {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      const ms = String(now.getMilliseconds()).padStart(3, '0');
+      document.getElementById('liveClock').textContent = `${h}:${m}:${s}.${ms}`;
+      requestAnimationFrame(tickClock);
+    }
+    tickClock();
 
-document.getElementById('connectAllBtn').addEventListener('click', () => {
-  const cams = getCamConfigs();
-  if (!cams.length){
-    log('Belum ada kamera dengan path yang diisi.', 'err');
-    return;
-  }
-  cams.forEach(cam => {
-    disconnectCamera(cam.id);
-    connectCamera(cam);
-  });
-});
-
-document.getElementById('disconnectAllBtn').addEventListener('click', () => {
-  Object.keys(activeConnections).forEach(disconnectCamera);
-  log('Semua koneksi diputus.');
-});
-
-// live clock buat manual latency check
-function tickClock(){
-  const now = new Date();
-  const h = String(now.getHours()).padStart(2,'0');
-  const m = String(now.getMinutes()).padStart(2,'0');
-  const s = String(now.getSeconds()).padStart(2,'0');
-  const ms = String(now.getMilliseconds()).padStart(3,'0');
-  document.getElementById('liveClock').textContent = `${h}:${m}:${s}.${ms}`;
-  requestAnimationFrame(tickClock);
-}
-tickClock();
-
-log('Siap. Isi host server, path kamera, lalu klik "Connect semua kamera".');
-</script>
+    log('Siap. Isi host server, path kamera, lalu klik "Connect semua kamera".');
+  </script>
 </body>
+
 </html>
