@@ -121,9 +121,10 @@ void BrokerPublisher::publishVideoFrame(const cv::Mat& frame) {
             std::vector<uchar> buf;
             cv::imencode(".jpg", frame_copy, buf, compression_params);
             
-            // Publish raw binary bytes directly to redis
+            // Publish raw binary bytes directly to redis dynamically per camera
             std::string payload(buf.begin(), buf.end());
-            redis_.publish("face_video_stream", payload);
+            std::string video_channel = "face_video_stream_" + camera_id_;
+            redis_.publish(video_channel, payload);
         } catch (const std::exception& e) {
             std::cerr << "[BrokerPublisher] Video frame publish error: " << e.what() << std::endl;
         }

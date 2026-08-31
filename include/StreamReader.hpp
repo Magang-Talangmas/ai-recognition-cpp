@@ -14,7 +14,7 @@ public:
      * 
      * @param rtsp_url URL of the RTSP stream (e.g., MediaMTX)
      */
-    explicit StreamReader(const std::string& rtsp_url);
+    explicit StreamReader(const std::string& rtsp_url, const std::string& camera_id);
     ~StreamReader();
 
     /**
@@ -41,7 +41,7 @@ private:
 
     std::string rtsp_url_;
     cv::VideoCapture capture_;
-    
+    std::string camera_id_;
     std::atomic<bool> is_running_;
     std::thread capture_thread_;
     

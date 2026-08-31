@@ -1,0 +1,6 @@
+@echo off
+echo Menyalakan Kamera 1...
+start "Kamera 1" build\Release\face_preprocessor.exe --url rtsp://192.168.77.171:8554/stream --cam cam_01
+echo Menyalakan Kamera 2...
+start "Kamera 2" build\Release\face_preprocessor.exe --url rtsp://192.168.77.171:8554/cam2 --cam cam_02
+echo Semua kamera berhasil dijalankan!

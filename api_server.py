@@ -27,8 +27,10 @@ face_history    = deque(maxlen=MAX_HISTORY)
 latest_result   = {}
 sse_subscribers = []
 
-latest_video_frame = None
-video_subscribers = []
+import collections
+latest_video_frames = {}
+video_subscribers = collections.defaultdict(list)
+bbox_subscribers = collections.defaultdict(list)
 lock            = threading.Lock()
 
 
@@ -65,27 +67,48 @@ def redis_listener():
                         q.append(entry)
                     except Exception:
                         pass
+                
+                # Payload super ringan (tanpa gambar base64) untuk FE
+                cam_id = entry.get("camera_id", "unknown")
+                if cam_id in bbox_subscribers:
+                    bbox_payload = {
+                        "camera_id": cam_id,
+                        "timestamp_ms": entry.get("timestamp_ms"),
+                        "bounding_box": entry.get("bounding_box"),
+                        "name": "Unknown" # Sesuai kesepakatan, kita belum tau namanya
+                    }
+                    for q in list(bbox_subscribers[cam_id]):
+                        try:
+                            q.append(bbox_payload)
+                        except Exception:
+                            pass
         except Exception as e:
             print(f"[Redis] Parse error: {e}")
 
 def video_listener():
-    global latest_video_frame
+    global latest_video_frames
     r      = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0) # raw bytes
     pubsub = r.pubsub()
-    pubsub.subscribe("face_video_stream")
-    print(f"[Redis] Listening on channel: face_video_stream")
+    pubsub.psubscribe("face_video_stream_*")
+    print(f"[Redis] Listening on pattern: face_video_stream_*")
 
     for message in pubsub.listen():
-        if message["type"] != "message":
+        if message["type"] != "pmessage":
             continue
         try:
-            latest_video_frame = message["data"]
-            # Trigger subscribers
-            for q in list(video_subscribers):
-                try:
-                    q.append(latest_video_frame)
-                except Exception:
-                    pass
+            channel = message["channel"].decode('utf-8') if isinstance(message["channel"], bytes) else message["channel"]
+            camera_id = channel.replace("face_video_stream_", "")
+            frame_data = message["data"]
+            
+            with lock:
+                latest_video_frames[camera_id] = frame_data
+                # Trigger subscribers for this specific camera
+                if camera_id in video_subscribers:
+                    for q in list(video_subscribers[camera_id]):
+                        try:
+                            q.append(frame_data)
+                        except Exception:
+                            pass
         except Exception as e:
             pass
 
@@ -217,15 +240,54 @@ async def stream_faces(request: Request):
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
-@app.get("/api/v1/video_feed", tags=["Testing"], summary="MJPEG Video Stream with Bounding Boxes")
-async def video_feed(request: Request):
+
+@app.get("/api/v1/live-bbox/{camera_id}", tags=["Faces"], summary="Lightweight SSE stream for Bounding Boxes only")
+async def stream_live_bbox(camera_id: str, request: Request):
     """
-    Menyediakan video live stream (MJPEG) yang bisa dipasang langsung di tag <img> HTML.
+    Server-Sent Events (SSE) super ringan khusus untuk tim Frontend.
+    Hanya mereturn koordinat Bounding Box tanpa gambar Base64.
+    """
+    q = deque(maxlen=100)
+    with lock:
+        bbox_subscribers[camera_id].append(q)
+
+    async def event_generator():
+        try:
+            yield 'data: {"status": "connected"}\n\n'
+            while True:
+                if await request.is_disconnected():
+                    break
+                
+                items = []
+                with lock:
+                    if len(q) > 0:
+                        items = list(q)
+                        q.clear()
+                        
+                for item in items:
+                    yield f"data: {json.dumps(item)}\n\n"
+                
+                await asyncio.sleep(0.05)
+        finally:
+            with lock:
+                if camera_id in bbox_subscribers and q in bbox_subscribers[camera_id]:
+                    bbox_subscribers[camera_id].remove(q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+@app.get("/api/v1/video_feed/{camera_id}", tags=["Testing"], summary="MJPEG Video Stream per Camera")
+async def video_feed(camera_id: str, request: Request):
+    """
+    Menyediakan video live stream (MJPEG) spesifik untuk suatu camera_id.
     Berisi kotak bounding box hasil deteksi dari program C++.
     """
     q = deque(maxlen=10)
     with lock:
-        video_subscribers.append(q)
+        video_subscribers[camera_id].append(q)
 
     async def frame_generator():
         try:
@@ -243,11 +305,11 @@ async def video_feed(request: Request):
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
                 
-                await asyncio.sleep(0.06) # ~15 FPS
+                await asyncio.sleep(0.01) # Very small delay to allow up to 100 FPS (capped by C++ producer)
         finally:
             with lock:
-                if q in video_subscribers:
-                    video_subscribers.remove(q)
+                if camera_id in video_subscribers and q in video_subscribers[camera_id]:
+                    video_subscribers[camera_id].remove(q)
 
     return StreamingResponse(
         frame_generator(),

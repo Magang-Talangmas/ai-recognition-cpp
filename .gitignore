@@ -4,3 +4,4 @@ build/
 ffmpeg.zip
 inspect_onnx.cpp
 scrfd_ref.cpp
+__pycache__/

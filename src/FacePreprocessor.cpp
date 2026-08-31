@@ -82,7 +82,21 @@ cv::Mat FacePreprocessor::applyCLAHE(const cv::Mat& image) {
     cv::cvtColor(image, lab_image, cv::COLOR_BGR2Lab);
     std::vector<cv::Mat> lab_planes(3);
     cv::split(lab_image, lab_planes);
-    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
+    
+    // Cek rata-rata kecerahan (Luminance/Lightness channel)
+    double mean_l = cv::mean(lab_planes[0])[0];
+    
+    // Jika wajah sudah cukup terang (rata-rata L > 120), JANGAN pakai CLAHE 
+    // agar gambar tidak menjadi terlalu cerah (overexposed/putih pucat).
+    if (mean_l > 120.0) {
+        return image.clone();
+    }
+    
+    // Jika wajah sangat gelap (< 60), pakai CLAHE kuat (2.0). 
+    // Jika lumayan gelap (60-120), pakai CLAHE tipis/lembut (1.0).
+    double clip_limit = (mean_l < 60.0) ? 2.0 : 1.0;
+    
+    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(clip_limit, cv::Size(8, 8));
     clahe->apply(lab_planes[0], lab_planes[0]);
     cv::merge(lab_planes, lab_image);
     cv::Mat clahe_bgr;

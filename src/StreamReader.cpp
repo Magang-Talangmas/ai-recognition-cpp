@@ -5,8 +5,8 @@
 #include <fstream>
 #include <chrono>
 
-StreamReader::StreamReader(const std::string& rtsp_url) 
-    : rtsp_url_(rtsp_url), is_running_(false), has_new_frame_(false) {
+StreamReader::StreamReader(const std::string& rtsp_url, const std::string& camera_id) 
+    : rtsp_url_(rtsp_url), camera_id_(camera_id), is_running_(false), has_new_frame_(false) {
 }
 
 StreamReader::~StreamReader() {
@@ -49,15 +49,16 @@ void StreamReader::reconnect() {
 void StreamReader::captureLoop() {
     std::cout << "[StreamReader] Starting capture loop for: " << rtsp_url_ << std::endl;
     
-    // Jalankan proxy Python di background
+    // Jalankan proxy Python di background dengan ID kamera
     std::cout << "[StreamReader] Memulai Python RTSP Proxy..." << std::endl;
     // Gunakan path absolut untuk keamanan dan spesifik Miniconda Python
-    std::string cmd = "start /B D:\\MiniConda\\python.exe D:\\ai-recognition-cpp\\rtsp_proxy.py \"" + rtsp_url_ + "\"";
+    std::string cmd = "start /B D:\\MiniConda\\python.exe D:\\ai-recognition-cpp\\rtsp_proxy.py \"" + rtsp_url_ + "\" " + camera_id_;
     system(cmd.c_str());
 
-    // Buka Named Pipe
+    // Buka Named Pipe dinamis per kamera
+    std::string pipe_name = "\\\\.\\pipe\\rtsp_pipe_" + camera_id_;
     HANDLE hPipe = CreateNamedPipeA(
-        "\\\\.\\pipe\\rtsp_pipe",
+        pipe_name.c_str(),
         PIPE_ACCESS_INBOUND,
         PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
         1, 1024 * 1024, 1024 * 1024, 0, NULL
@@ -95,8 +96,17 @@ void StreamReader::captureLoop() {
         
         // Baca data JPG
         std::vector<uchar> buf(size);
-        if (!ReadFile(hPipe, buf.data(), size, &bytesRead, NULL) || bytesRead != size) {
-            std::cerr << "[StreamReader] Gagal membaca data JPG dari Pipe" << std::endl;
+        DWORD totalRead = 0;
+        while (totalRead < size) {
+            DWORD chunkRead = 0;
+            if (!ReadFile(hPipe, buf.data() + totalRead, size - totalRead, &chunkRead, NULL) || chunkRead == 0) {
+                break;
+            }
+            totalRead += chunkRead;
+        }
+
+        if (totalRead != size) {
+            std::cerr << "[StreamReader] Gagal membaca seluruh data JPG dari Pipe" << std::endl;
             break;
         }
         

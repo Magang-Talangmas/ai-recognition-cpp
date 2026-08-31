@@ -38,6 +38,36 @@ void drawDashedRectangle(cv::Mat& img, cv::Rect rect, const cv::Scalar& color, i
 #include <sstream>
 #include <map>
 
+// Helper untuk memotong gambar menjadi rasio 16:9 (Center Crop)
+cv::Mat cropTo16x9(const cv::Mat& src) {
+    int w = src.cols;
+    int h = src.rows;
+    double target_ratio = 16.0 / 9.0;
+    double current_ratio = (double)w / h;
+
+    if (std::abs(current_ratio - target_ratio) < 0.01) {
+        return src; // Already 16:9
+    }
+
+    int crop_w = w;
+    int crop_h = h;
+    int x = 0;
+    int y = 0;
+
+    if (current_ratio > target_ratio) {
+        // Terlalu lebar, potong kiri-kanan
+        crop_w = (int)(h * target_ratio);
+        x = (w - crop_w) / 2;
+    } else {
+        // Terlalu tinggi (misal 4:3), potong atas-bawah
+        crop_h = (int)(w / target_ratio);
+        y = (h - crop_h) / 2;
+    }
+
+    cv::Rect roi(x, y, crop_w, crop_h);
+    return src(roi).clone();
+}
+
 // Helper untuk membaca file .env
 std::map<std::string, std::string> loadEnv(const std::string& path) {
     std::map<std::string, std::string> env;
@@ -75,6 +105,14 @@ int main(int argc, char** argv) {
     std::string redis_channel = env.count("REDIS_CHANNEL") ? env["REDIS_CHANNEL"] : "face_preprocessed_queue";
     std::string camera_id = env.count("CAMERA_ID") ? env["CAMERA_ID"] : "cam_01";
     
+    // CLI Arguments override
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--url" && i + 1 < argc) rtsp_url = argv[++i];
+        else if (arg == "--cam" && i + 1 < argc) camera_id = argv[++i];
+        else if (arg == "--redis" && i + 1 < argc) redis_channel = argv[++i];
+    }
+
     // Model paths for ONNX
     std::string scrfd_model_path = "models/scrfd_2.5g_kps.onnx";
 
@@ -86,7 +124,7 @@ int main(int argc, char** argv) {
     std::cout << "Redis Channel  : " << redis_channel << std::endl;
 
     // Initialize modules
-    StreamReader reader(rtsp_url);
+    StreamReader reader(rtsp_url, camera_id);
     FacePreprocessor preprocessor(scrfd_model_path);
     BrokerPublisher publisher(redis_url, redis_channel, camera_id);
 
@@ -99,7 +137,7 @@ int main(int argc, char** argv) {
     // Start async reading from MediaMTX
     reader.start();
 
-    const std::string WINDOW_NAME = "Talangmas AI Attendance - Live View";
+    const std::string WINDOW_NAME = "Talangmas AI Attendance - " + camera_id;
     cv::namedWindow(WINDOW_NAME, cv::WINDOW_NORMAL);
 
     // Thread khusus untuk Inferensi AI agar tidak membuat video lag
@@ -157,6 +195,9 @@ int main(int argc, char** argv) {
         if (opt_frame.has_value()) {
             cv::Mat frame = opt_frame.value();
             
+            // Auto Crop 16:9 agar koordinat bounding box sinkron dengan FE Dashboard
+            frame = cropTo16x9(frame);
+            
             // Kirim frame ke thread inferensi jika sudah siap menerima yang baru
             {
                 std::lock_guard<std::mutex> lock(mtx);
@@ -182,10 +223,10 @@ int main(int argc, char** argv) {
             
             cv::imshow(WINDOW_NAME, display_frame);
             
-            // Limit publish video stream to ~15 FPS to save CPU and bandwidth
+            // Limit publish video stream to ~30 FPS for smoother playback
             auto now = std::chrono::steady_clock::now();
             auto time_since_last_vid = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_video_publish).count();
-            if (time_since_last_vid > 66) { // 1000ms / 15 = 66ms
+            if (time_since_last_vid > 33) { // 1000ms / 30 = 33ms
                 // Scale down frame before publishing to save bandwidth (Diperbesar jadi HD 1280)
                 cv::Mat small_frame;
                 float scale = 1280.0f / display_frame.cols;
