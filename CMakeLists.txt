@@ -7,8 +7,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Find OpenCV
 find_package(OpenCV REQUIRED)
 
-# Find ONNX Runtime (installed via vcpkg)
-find_package(onnxruntime CONFIG REQUIRED)
+option(USE_GPU "Enable NVIDIA GPU (CUDA) support" OFF)
+
+if(USE_GPU)
+    message(STATUS "MIGRASI GPU DIAKTIFKAN! Memastikan onnxruntime-gpu tersedia...")
+    # NOTE: Pastikan kamu sudah install onnxruntime-gpu
+    # vcpkg install onnxruntime-gpu:x64-windows
+    find_package(onnxruntime CONFIG REQUIRED)
+    add_compile_definitions(USE_GPU)
+else()
+    message(STATUS "Berjalan di mode CPU.")
+    find_package(onnxruntime CONFIG REQUIRED)
+endif()
 
 # Threading
 find_package(Threads REQUIRED)

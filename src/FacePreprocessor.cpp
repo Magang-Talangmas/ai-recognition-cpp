@@ -4,11 +4,28 @@
 #include <algorithm>
 #include <opencv2/dnn.hpp> // Required for dnn::NMSBoxes
 
+#ifdef USE_GPU
+#include <core/providers/cuda/cuda_provider_factory.h>
+#endif
+
 FacePreprocessor::FacePreprocessor(const std::string& scrfd_model_path) {
     // 1. Konfigurasi ONNX Runtime Session
     session_options_.SetIntraOpNumThreads(1);
     session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
     
+#ifdef USE_GPU
+    std::cout << "[FacePreprocessor] Mengaktifkan NVIDIA CUDA GPU Execution Provider..." << std::endl;
+    OrtCUDAProviderOptions cuda_options;
+    cuda_options.device_id = 0;
+    
+    // Optimasi GPU tingkat lanjut (TensorRT-like feel)
+    cuda_options.arena_extend_strategy = 0;
+    cuda_options.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
+    cuda_options.do_copy_in_default_stream = 1;
+
+    session_options_.AppendExecutionProvider_CUDA(cuda_options);
+#endif
+
     // Di Windows, ONNX Runtime mewajibkan string path dalam bentuk wide-char (wstring)
 #ifdef _WIN32
     std::string model_path = "D:\\ai-recognition-cpp\\models\\scrfd_2.5g_kps.onnx";

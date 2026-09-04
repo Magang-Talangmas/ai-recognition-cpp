@@ -149,11 +149,21 @@ int main(int argc, char** argv) {
             auto time_since_last = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_inference_time).count();
             
             // --- FRAME SKIPPING LOGIC ---
-            // Hanya proses maksimal 5 gambar per detik (1000ms / 5 = 200ms)
+#ifdef USE_GPU
+            // GPU SANGAT CEPAT: Bisa tembus 30 FPS penuh (1000ms / 30 = ~33ms)
+            // Ini akan membuat Bounding Box sangat smooth menempel di wajah
+            if (time_since_last < 33) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                continue;
+            }
+#else
+            // CPU LAMBAT: Hanya proses maksimal 5 gambar per detik (1000ms / 5 = 200ms)
+            // Mencegah CPU meledak jika membuka banyak kamera
             if (time_since_last < 200) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 continue;
             }
+#endif
             
             cv::Mat frame_to_process;
             bool should_process = false;
