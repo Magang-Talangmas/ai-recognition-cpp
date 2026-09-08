@@ -7,13 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Find OpenCV
 find_package(OpenCV REQUIRED)
 
-option(USE_GPU "Enable NVIDIA GPU (CUDA) support" OFF)
+option(USE_GPU "Enable NVIDIA GPU (CUDA) support" ON)
 
 if(USE_GPU)
-    message(STATUS "MIGRASI GPU DIAKTIFKAN! Memastikan onnxruntime-gpu tersedia...")
-    # NOTE: Pastikan kamu sudah install onnxruntime-gpu
-    # vcpkg install onnxruntime-gpu:x64-windows
-    find_package(onnxruntime CONFIG REQUIRED)
+    message(STATUS "MIGRASI GPU DIAKTIFKAN! Menggunakan prebuilt ONNX Runtime GPU...")
+    # Arahkan CMake ke folder onnxruntime-gpu hasil download
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime-gpu/include)
+    link_directories(${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime-gpu/lib)
     add_compile_definitions(USE_GPU)
 else()
     message(STATUS "Berjalan di mode CPU.")
@@ -52,11 +52,23 @@ add_executable(face_preprocessor
     src/BrokerPublisher.cpp
 )
 
-target_link_libraries(face_preprocessor PRIVATE
-    ${OpenCV_LIBS}
-    ${REDIS_PLUS_PLUS_LIBRARIES}
-    ${HIREDIS_LIBRARIES}
-    nlohmann_json::nlohmann_json
-    Threads::Threads
-    onnxruntime::onnxruntime
-)
+if(USE_GPU)
+    target_link_libraries(face_preprocessor PRIVATE
+        ${OpenCV_LIBS}
+        ${REDIS_PLUS_PLUS_LIBRARIES}
+        ${HIREDIS_LIBRARIES}
+        nlohmann_json::nlohmann_json
+        Threads::Threads
+        onnxruntime
+        onnxruntime_providers_cuda
+    )
+else()
+    target_link_libraries(face_preprocessor PRIVATE
+        ${OpenCV_LIBS}
+        ${REDIS_PLUS_PLUS_LIBRARIES}
+        ${HIREDIS_LIBRARIES}
+        nlohmann_json::nlohmann_json
+        Threads::Threads
+        onnxruntime::onnxruntime
+    )
+endif()

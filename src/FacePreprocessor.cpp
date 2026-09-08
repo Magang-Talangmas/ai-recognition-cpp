@@ -5,7 +5,7 @@
 #include <opencv2/dnn.hpp> // Required for dnn::NMSBoxes
 
 #ifdef USE_GPU
-#include <core/providers/cuda/cuda_provider_factory.h>
+// No extra include needed for CUDA in modern ORT
 #endif
 
 FacePreprocessor::FacePreprocessor(const std::string& scrfd_model_path) {
