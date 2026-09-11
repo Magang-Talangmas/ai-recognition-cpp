@@ -5,3 +5,13 @@ ffmpeg.zip
 inspect_onnx.cpp
 scrfd_ref.cpp
 __pycache__/
+build/
+models/
+onnxruntime*/
+*.exe
+*.pdb
+*.lib
+*.dll
+test_*.txt
+__pycache__/
+.env

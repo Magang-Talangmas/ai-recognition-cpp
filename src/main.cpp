@@ -1,267 +1,142 @@
-#include "StreamReader.hpp"
+#include <iostream>
+#include <string>
+#include <vector>
+#include <chrono>
+#include <opencv2/opencv.hpp>
+#include <nlohmann/json.hpp>
 #include "FacePreprocessor.hpp"
 #include "BrokerPublisher.hpp"
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include <csignal>
-#include <atomic>
+#include "StreamReader.hpp"
 
-std::atomic<bool> keep_running(true);
+using json = nlohmann::json;
 
-void signalHandler(int signum) {
-    std::cout << "\n[Main] Interrupt signal (" << signum << ") received. Shutting down..." << std::endl;
-    keep_running = false;
-}
+// Fungsi untuk menggambar Bounding Box ala Sci-Fi (Patah-patah di sudut)
+// Fungsi untuk menggambar Bounding Box kotak putus-putus
+void drawDashedRect(cv::Mat& img, const cv::Rect& rect, const cv::Scalar& color, int thickness = 3, int dash_length = 15) {
+    int x1 = rect.x, y1 = rect.y;
+    int x2 = rect.x + rect.width, y2 = rect.y + rect.height;
 
-// Fungsi bantuan untuk menggambar kotak putus-putus (dashed rectangle)
-void drawDashedRectangle(cv::Mat& img, cv::Rect rect, const cv::Scalar& color, int thickness = 1, int dash_length = 8) {
-    // Top edge
-    for (int x = rect.x; x < rect.x + rect.width; x += dash_length * 2) {
-        cv::line(img, cv::Point(x, rect.y), cv::Point(std::min(x + dash_length, rect.x + rect.width), rect.y), color, thickness);
+    // Garis Atas
+    for (int x = x1; x < x2; x += dash_length * 2) {
+        cv::line(img, cv::Point(x, y1), cv::Point(std::min(x + dash_length, x2), y1), color, thickness);
     }
-    // Bottom edge
-    for (int x = rect.x; x < rect.x + rect.width; x += dash_length * 2) {
-        cv::line(img, cv::Point(x, rect.y + rect.height), cv::Point(std::min(x + dash_length, rect.x + rect.width), rect.y + rect.height), color, thickness);
+    // Garis Bawah
+    for (int x = x1; x < x2; x += dash_length * 2) {
+        cv::line(img, cv::Point(x, y2), cv::Point(std::min(x + dash_length, x2), y2), color, thickness);
     }
-    // Left edge
-    for (int y = rect.y; y < rect.y + rect.height; y += dash_length * 2) {
-        cv::line(img, cv::Point(rect.x, y), cv::Point(rect.x, std::min(y + dash_length, rect.y + rect.height)), color, thickness);
+    // Garis Kiri
+    for (int y = y1; y < y2; y += dash_length * 2) {
+        cv::line(img, cv::Point(x1, y), cv::Point(x1, std::min(y + dash_length, y2)), color, thickness);
     }
-    // Right edge
-    for (int y = rect.y; y < rect.y + rect.height; y += dash_length * 2) {
-        cv::line(img, cv::Point(rect.x + rect.width, y), cv::Point(rect.x + rect.width, std::min(y + dash_length, rect.y + rect.height)), color, thickness);
+    // Garis Kanan
+    for (int y = y1; y < y2; y += dash_length * 2) {
+        cv::line(img, cv::Point(x2, y), cv::Point(x2, std::min(y + dash_length, y2)), color, thickness);
     }
-}
-
-#include <fstream>
-#include <sstream>
-#include <map>
-
-// Helper untuk memotong gambar menjadi rasio 16:9 (Center Crop)
-cv::Mat cropTo16x9(const cv::Mat& src) {
-    int w = src.cols;
-    int h = src.rows;
-    double target_ratio = 16.0 / 9.0;
-    double current_ratio = (double)w / h;
-
-    if (std::abs(current_ratio - target_ratio) < 0.01) {
-        return src; // Already 16:9
-    }
-
-    int crop_w = w;
-    int crop_h = h;
-    int x = 0;
-    int y = 0;
-
-    if (current_ratio > target_ratio) {
-        // Terlalu lebar, potong kiri-kanan
-        crop_w = (int)(h * target_ratio);
-        x = (w - crop_w) / 2;
-    } else {
-        // Terlalu tinggi (misal 4:3), potong atas-bawah
-        crop_h = (int)(w / target_ratio);
-        y = (h - crop_h) / 2;
-    }
-
-    cv::Rect roi(x, y, crop_w, crop_h);
-    return src(roi).clone();
-}
-
-// Helper untuk membaca file .env
-std::map<std::string, std::string> loadEnv(const std::string& path) {
-    std::map<std::string, std::string> env;
-    std::ifstream file(path);
-    if (!file.is_open()) return env;
-    
-    std::string line;
-    while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        auto delimiterPos = line.find("=");
-        if (delimiterPos != std::string::npos) {
-            std::string key = line.substr(0, delimiterPos);
-            std::string value = line.substr(delimiterPos + 1);
-            // Hapus whitespace jika ada
-            key.erase(key.find_last_not_of(" \n\r\t") + 1);
-            value.erase(0, value.find_first_not_of(" \n\r\t\"'"));
-            value.erase(value.find_last_not_of(" \n\r\t\"'") + 1);
-            env[key] = value;
-        }
-    }
-    return env;
 }
 
 int main(int argc, char** argv) {
-    // Register signal handlers for graceful shutdown
-    std::signal(SIGINT, signalHandler);
-    std::signal(SIGTERM, signalHandler);
+    std::cout << "=================================================" << std::endl;
+    std::cout << "  Talangmas AI Preprocessing Pipeline (GPU)      " << std::endl;
+    std::cout << "=================================================" << std::endl;
 
-    // Load .env file
-    std::map<std::string, std::string> env = loadEnv(".env");
+    std::string rtsp_url = "rtsp://127.0.0.1:8554/stream";
+    std::string camera_id = "cam_01";
+    std::string redis_channel = "face_preprocessed_queue";
+    std::string redis_url = "tcp://127.0.0.1:6379";
 
-    // Configuration with fallback to default values if .env is missing
-    std::string rtsp_url = env.count("RTSP_URL") ? env["RTSP_URL"] : "rtsp://192.168.77.171:8554/stream";
-    std::string redis_url = env.count("REDIS_URL") ? env["REDIS_URL"] : "tcp://127.0.0.1:6379";
-    std::string redis_channel = env.count("REDIS_CHANNEL") ? env["REDIS_CHANNEL"] : "face_preprocessed_queue";
-    std::string camera_id = env.count("CAMERA_ID") ? env["CAMERA_ID"] : "cam_01";
-    
-    // CLI Arguments override
+    bool is_cam_overridden = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--url" && i + 1 < argc) rtsp_url = argv[++i];
-        else if (arg == "--cam" && i + 1 < argc) camera_id = argv[++i];
+        else if (arg == "--cam" && i + 1 < argc) { camera_id = argv[++i]; is_cam_overridden = true; }
         else if (arg == "--redis" && i + 1 < argc) redis_channel = argv[++i];
     }
 
-    // Model paths for ONNX
-    std::string scrfd_model_path = "models/scrfd_2.5g_kps.onnx";
-
-    std::cout << "=================================================" << std::endl;
-    std::cout << "  Face Recognition Input Preprocessing Service   " << std::endl;
-    std::cout << "=================================================" << std::endl;
-    std::cout << "RTSP URL       : " << rtsp_url << std::endl;
-    std::cout << "Redis URL      : " << redis_url << std::endl;
-    std::cout << "Redis Channel  : " << redis_channel << std::endl;
-
-    // Initialize modules
-    StreamReader reader(rtsp_url, camera_id);
-    FacePreprocessor preprocessor(scrfd_model_path);
-    BrokerPublisher publisher(redis_url, redis_channel, camera_id);
-
-    // Mutex dan variabel untuk sinkronisasi thread inferensi
-    std::mutex mtx;
-    cv::Mat inference_frame;
-    std::vector<PreprocessedFace> latest_faces;
-    std::atomic<bool> new_frame_for_inference(false);
-
-    // Start async reading from MediaMTX
-    reader.start();
-
-    const std::string WINDOW_NAME = "Talangmas AI Attendance - " + camera_id;
-    cv::namedWindow(WINDOW_NAME, cv::WINDOW_NORMAL);
-
-    // Thread khusus untuk Inferensi AI agar tidak membuat video lag
-    std::thread inference_thread([&]() {
-        auto last_inference_time = std::chrono::steady_clock::now();
-        
-        while (keep_running) {
-            auto now = std::chrono::steady_clock::now();
-            auto time_since_last = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_inference_time).count();
-            
-            // --- FRAME SKIPPING LOGIC ---
-#ifdef USE_GPU
-            // GPU SANGAT CEPAT: Bisa tembus 30 FPS penuh (1000ms / 30 = ~33ms)
-            // Ini akan membuat Bounding Box sangat smooth menempel di wajah
-            if (time_since_last < 33) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                continue;
-            }
-#else
-            // CPU LAMBAT: Hanya proses maksimal 5 gambar per detik (1000ms / 5 = 200ms)
-            // Mencegah CPU meledak jika membuka banyak kamera
-            if (time_since_last < 200) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                continue;
-            }
-#endif
-            
-            cv::Mat frame_to_process;
-            bool should_process = false;
-            
-            {
-                std::lock_guard<std::mutex> lock(mtx);
-                if (new_frame_for_inference) {
-                    frame_to_process = inference_frame.clone();
-                    new_frame_for_inference = false;
-                    should_process = true;
-                }
-            }
-            
-            if (should_process && !frame_to_process.empty()) {
-                auto faces = preprocessor.process(frame_to_process);
-                last_inference_time = std::chrono::steady_clock::now(); // Catat waktu proses terakhir
-                
-                {
-                    std::lock_guard<std::mutex> lock(mtx);
-                    latest_faces = faces; // Simpan hasil terbaru untuk digambar di Main Thread
-                }
-                
-                if (!faces.empty()) {
-                    std::cout << "[Inference Thread] Detected & preprocessed " << faces.size() << " valid face(s)." << std::endl;
-                    publisher.publish(faces);
-                }
-            } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            }
-        }
-    });
-
-    // Main processing loop (Hanya untuk UI dan membaca frame agar sangat mulus)
-    auto last_video_publish = std::chrono::steady_clock::now();
-
-    while (keep_running) {
-        auto opt_frame = reader.getLatestFrame();
-        
-        if (opt_frame.has_value()) {
-            cv::Mat frame = opt_frame.value();
-            
-            // Auto Crop 16:9 agar koordinat bounding box sinkron dengan FE Dashboard
-            frame = cropTo16x9(frame);
-            
-            // Kirim frame ke thread inferensi jika sudah siap menerima yang baru
-            {
-                std::lock_guard<std::mutex> lock(mtx);
-                if (!new_frame_for_inference) {
-                    inference_frame = frame.clone();
-                    new_frame_for_inference = true;
-                }
-            }
-            
-            cv::Mat display_frame = frame.clone();
-            
-            // Ambil kotak bounding box terakhir yang ditemukan AI
-            std::vector<PreprocessedFace> faces_to_draw;
-            {
-                std::lock_guard<std::mutex> lock(mtx);
-                faces_to_draw = latest_faces;
-            }
-            
-            for (const auto& face : faces_to_draw) {
-                // Gambar kotak putus-putus warna Cyan/Teal
-                drawDashedRectangle(display_frame, face.bounding_box, cv::Scalar(255, 255, 0), 1, 6);
-            }
-            
-            cv::imshow(WINDOW_NAME, display_frame);
-            
-            // Limit publish video stream to ~30 FPS for smoother playback
-            auto now = std::chrono::steady_clock::now();
-            auto time_since_last_vid = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_video_publish).count();
-            if (time_since_last_vid > 33) { // 1000ms / 30 = 33ms
-                // Scale down frame before publishing to save bandwidth (Diperbesar jadi HD 1280)
-                cv::Mat small_frame;
-                float scale = 1280.0f / display_frame.cols;
-                cv::resize(display_frame, small_frame, cv::Size(), scale, scale, cv::INTER_AREA);
-                
-                publisher.publishVideoFrame(small_frame);
-                last_video_publish = now;
-            }
-            
-            // Tunggu 1 milidetik agar window OpenCV sempat merender gambar
-            if (cv::waitKey(1) == 'q') {
-                keep_running = false;
-            }
-            
-        } else {
-            // Sleep briefly to yield CPU if no new frame is available yet
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    if (!is_cam_overridden) {
+        size_t last_slash = rtsp_url.find_last_of('/');
+        if (last_slash != std::string::npos && last_slash + 1 < rtsp_url.length()) {
+            camera_id = rtsp_url.substr(last_slash + 1);
         }
     }
 
-    inference_thread.join();
+    std::string scrfd_model_path = "models/scrfd_2.5g_kps.onnx";
+    
+    FacePreprocessor preprocessor(scrfd_model_path);
+    BrokerPublisher publisher(redis_url, redis_channel, camera_id);
+    StreamReader reader(rtsp_url, camera_id);
 
-    std::cout << "Stopping reader..." << std::endl;
+    std::cout << "Initializing stream for: " << camera_id << std::endl;
+    std::cout << "URL: " << rtsp_url << std::endl;
+
+    // Agar window OpenCV bisa di full-screen tanpa ada sisa ruang abu-abu
+    cv::namedWindow("Face Detection - " + camera_id, cv::WINDOW_NORMAL);
+
+    reader.start();
+
+    auto last_inference_time = std::chrono::steady_clock::now();
+    auto last_video_publish = std::chrono::steady_clock::now();
+    
+    // Menyimpan memori wajah terakhir agar kotak tidak kedap-kedip (flickering) di frame yang tidak diproses AI
+    std::vector<PreprocessedFace> last_faces;
+
+    while (true) {
+        auto opt_frame = reader.getLatestFrame();
+        if (!opt_frame.has_value()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+
+        cv::Mat frame = opt_frame.value();
+        cv::Mat display_frame = frame.clone(); // Untuk ditampilkan di layar dan dikirim ke Redis
+
+        auto now = std::chrono::steady_clock::now();
+        auto time_since_last_inference = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_inference_time).count();
+
+        // 50 FPS Throttling for Inference
+        if (time_since_last_inference >= 20) {
+            last_faces = preprocessor.process(frame); // Simpan hasil deteksi ke memori
+            last_inference_time = std::chrono::steady_clock::now();
+            
+            if (!last_faces.empty()) {
+                std::cout << "[Inference Thread] Detected & preprocessed " << last_faces.size() << " valid face(s)." << std::endl;
+                publisher.publish(last_faces);
+            }
+        }
+
+        // GAMBAR BOUNDING BOX DI SETIAP FRAME (Menggunakan data terakhir)
+        // Ini kunci agar stream video terlihat 100% smooth dan kotak tidak hilang-timbul
+        for (const auto& face : last_faces) {
+            // Warna Cyan (255, 255, 0) di OpenCV BGR
+            drawDashedRect(display_frame, face.bounding_box, cv::Scalar(255, 255, 0), 3, 15);
+            
+            // Background hitam untuk teks agar mudah dibaca
+            std::string text = "Conf: " + std::to_string(face.confidence_score).substr(0,4);
+            int baseline = 0;
+            cv::Size textSize = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.6, 2, &baseline);
+            cv::rectangle(display_frame, 
+                cv::Point(face.bounding_box.x, face.bounding_box.y - 20), 
+                cv::Point(face.bounding_box.x + textSize.width, face.bounding_box.y), 
+                cv::Scalar(0, 0, 0), cv::FILLED);
+                
+            cv::putText(display_frame, text, 
+                cv::Point(face.bounding_box.x, face.bounding_box.y - 5),
+                cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 0), 2);
+        }
+
+        // 50 FPS Throttling for Video Publish ke Redis
+        auto time_since_last_vid = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_video_publish).count();
+        if (time_since_last_vid >= 20) {
+            cv::Mat small_frame;
+            cv::resize(display_frame, small_frame, cv::Size(640, 480), 0, 0, cv::INTER_LINEAR);
+            publisher.publishVideoFrame(small_frame);
+            last_video_publish = std::chrono::steady_clock::now();
+        }
+
+        cv::imshow("Face Detection - " + camera_id, display_frame);
+        if (cv::waitKey(1) == 27) break; // Tekan ESC untuk keluar
+    }
+
     reader.stop();
-    std::cout << "Service stopped gracefully." << std::endl;
-
+    cv::destroyAllWindows();
     return 0;
 }

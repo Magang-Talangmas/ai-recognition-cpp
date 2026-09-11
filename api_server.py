@@ -30,7 +30,7 @@ sse_subscribers = []
 import collections
 latest_video_frames = {}
 video_subscribers = collections.defaultdict(list)
-bbox_subscribers = collections.defaultdict(list)
+bbox_subscribers = [] # Diubah menjadi list tunggal (Unified)
 lock            = threading.Lock()
 
 
@@ -68,20 +68,19 @@ def redis_listener():
                     except Exception:
                         pass
                 
-                # Payload super ringan (tanpa gambar base64) untuk FE
+                # Payload super ringan (tanpa gambar base64) untuk FE (Unified - Semua Kamera)
                 cam_id = entry.get("camera_id", "unknown")
-                if cam_id in bbox_subscribers:
-                    bbox_payload = {
-                        "camera_id": cam_id,
-                        "timestamp_ms": entry.get("timestamp_ms"),
-                        "bounding_box": entry.get("bounding_box"),
-                        "name": "Unknown" # Sesuai kesepakatan, kita belum tau namanya
-                    }
-                    for q in list(bbox_subscribers[cam_id]):
-                        try:
-                            q.append(bbox_payload)
-                        except Exception:
-                            pass
+                bbox_payload = {
+                    "camera_id": cam_id,
+                    "timestamp_ms": entry.get("timestamp_ms"),
+                    "bounding_box": entry.get("bounding_box"),
+                    "name": "Unknown" # Sesuai kesepakatan, kita belum tau namanya
+                }
+                for q in list(bbox_subscribers):
+                    try:
+                        q.append(bbox_payload)
+                    except Exception:
+                        pass
         except Exception as e:
             print(f"[Redis] Parse error: {e}")
 
@@ -241,15 +240,15 @@ async def stream_faces(request: Request):
     )
 
 
-@app.get("/api/v1/live-bbox/{camera_id}", tags=["Faces"], summary="Lightweight SSE stream for Bounding Boxes only")
-async def stream_live_bbox(camera_id: str, request: Request):
+@app.get("/api/v1/live-bbox", tags=["Faces"], summary="Lightweight SSE stream for Bounding Boxes only (Unified)")
+async def stream_live_bbox(request: Request):
     """
     Server-Sent Events (SSE) super ringan khusus untuk tim Frontend.
-    Hanya mereturn koordinat Bounding Box tanpa gambar Base64.
+    Mengirimkan semua Bounding Box dari semua kamera (Unified).
     """
     q = deque(maxlen=100)
     with lock:
-        bbox_subscribers[camera_id].append(q)
+        bbox_subscribers.append(q)
 
     async def event_generator():
         try:
@@ -270,8 +269,8 @@ async def stream_live_bbox(camera_id: str, request: Request):
                 await asyncio.sleep(0.05)
         finally:
             with lock:
-                if camera_id in bbox_subscribers and q in bbox_subscribers[camera_id]:
-                    bbox_subscribers[camera_id].remove(q)
+                if q in bbox_subscribers:
+                    bbox_subscribers.remove(q)
 
     return StreamingResponse(
         event_generator(),

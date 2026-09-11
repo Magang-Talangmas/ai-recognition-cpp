@@ -30,6 +30,12 @@ FetchContent_Declare(json
 )
 FetchContent_MakeAvailable(json)
 
+# Fetch cpp-httplib automatically (For HTTP API Requests)
+FetchContent_Declare(httplib
+    URL https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.14.1.tar.gz
+)
+FetchContent_MakeAvailable(httplib)
+
 # For Redis, we expect redis++ and hiredis to be installed on the system
 # vcpkg install hiredis redis-plus-plus
 find_path(HIREDIS_INCLUDE_DIRS hiredis/hiredis.h)
@@ -58,6 +64,7 @@ if(USE_GPU)
         ${REDIS_PLUS_PLUS_LIBRARIES}
         ${HIREDIS_LIBRARIES}
         nlohmann_json::nlohmann_json
+        httplib
         Threads::Threads
         onnxruntime
         onnxruntime_providers_cuda
@@ -68,6 +75,7 @@ else()
         ${REDIS_PLUS_PLUS_LIBRARIES}
         ${HIREDIS_LIBRARIES}
         nlohmann_json::nlohmann_json
+        httplib
         Threads::Threads
         onnxruntime::onnxruntime
     )
