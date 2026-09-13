@@ -61,9 +61,19 @@ BrokerPublisher::~BrokerPublisher() {
 std::string BrokerPublisher::encodeBase64(const cv::Mat& image) {
     if (image.empty()) return "";
     
+    cv::Mat display_img;
+    // Check if the image is a normalized float tensor (e.g. from [-1.0, 1.0])
+    if (image.type() == CV_32FC3 || image.type() == CV_32FC1 || image.type() == CV_32F) {
+        // Scale back to 0-255 and cast to uint8
+        // Formula: (pixel * 127.5) + 127.5
+        image.convertTo(display_img, CV_8U, 127.5, 127.5);
+    } else {
+        display_img = image;
+    }
+    
     // Convert to standard JPEG format
     std::vector<uchar> buf;
-    cv::imencode(".jpg", image, buf);
+    cv::imencode(".jpg", display_img, buf);
     
     return base64_encode(buf.data(), buf.size());
 }
