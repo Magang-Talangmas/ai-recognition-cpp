@@ -6,10 +6,11 @@ import numpy as np
 import requests
 import psycopg2
 from dotenv import load_dotenv
+from fusion_utils import fuse_embeddings
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DIRECT_URL") or os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DIRECT_URL") or os.getenv("DATABASE_URL") or os.getenv("TEAM_DATABASE_URL")
 DATA_DIR = "./data"
 ENROLL_DIR = os.path.join(DATA_DIR, "enrolled")
 EMBEDDINGS_FILE = os.path.join(DATA_DIR, "embeddings.npy")
@@ -83,6 +84,8 @@ def sync_from_database(app=None):
         with open(emp_json_path, "w") as f:
             json.dump({"employeeId": employee_id}, f)
 
+        employee_embs = []
+
         for photo_url in photos:
             if not isinstance(photo_url, str) or not photo_url.startswith("http"):
                 continue
@@ -116,13 +119,53 @@ def sync_from_database(app=None):
 
             # Ambil wajah pertama yang terdeteksi (asumsi foto profil hanya ada 1 wajah)
             embedding = faces[0].embedding
-
-            embeddings.append(embedding)
-            labels.append(employee_id)
+            employee_embs.append(embedding)
             print(f"  -> Berhasil mengekstrak embedding dari {filename}")
 
-    # Simpan embedding dan label ke file lokal
+        if employee_embs:
+            fused_emb = fuse_embeddings(employee_embs)
+            upsert_query = """
+            INSERT INTO employee_embeddings (employee_id, fused_embedding, source_photo_count, updated_at)
+            VALUES (%s, %s, %s, now())
+            ON CONFLICT (employee_id) DO UPDATE SET 
+                fused_embedding = EXCLUDED.fused_embedding,
+                source_photo_count = EXCLUDED.source_photo_count,
+                updated_at = EXCLUDED.updated_at
+            """
+            try:
+                conn2 = psycopg2.connect(DATABASE_URL)
+                cur2 = conn2.cursor()
+                cur2.execute(upsert_query, (employee_id, fused_emb.tolist(), len(employee_embs)))
+                conn2.commit()
+                cur2.close()
+                conn2.close()
+                print(f"  -> Berhasil menyimpan fused embedding ke database (sumber: {len(employee_embs)} foto)")
+            except Exception as e:
+                print(f"  -> Gagal menyimpan embedding ke database: {e}")
+        else:
+            print(f"  -> Peringatan: Tidak ada wajah yang bisa di-fuse untuk {employee_id}")
+
+    # Simpan embedding dan label ke file lokal dari database
+    print("[Sync] Membangun ulang cache lokal dari employee_embeddings...")
+    try:
+        conn3 = psycopg2.connect(DATABASE_URL)
+        cur3 = conn3.cursor()
+        cur3.execute("SELECT employee_id, fused_embedding FROM employee_embeddings")
+        db_rows = cur3.fetchall()
+        for r in db_rows:
+            labels.append(r[0])
+            embeddings.append(np.array(r[1], dtype=np.float32))
+        cur3.close()
+        conn3.close()
+    except Exception as e:
+        print(f"[Sync] Gagal menarik cache lokal: {e}")
+
     if embeddings:
+        # Backup old format before overwrite
+        if os.path.exists(EMBEDDINGS_FILE) and not os.path.exists(EMBEDDINGS_FILE + ".bak"):
+            shutil.copy(EMBEDDINGS_FILE, EMBEDDINGS_FILE + ".bak")
+            shutil.copy(LABELS_FILE, LABELS_FILE + ".bak")
+
         np.save(EMBEDDINGS_FILE, np.array(embeddings))
         with open(LABELS_FILE, "w") as f:
             json.dump(labels, f)

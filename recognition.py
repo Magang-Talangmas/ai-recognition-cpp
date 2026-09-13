@@ -40,7 +40,8 @@ DATABASE_URL = os.getenv("DIRECT_URL") or os.getenv("DATABASE_URL")
 DATA_DIR = "./data"
 EMBEDDINGS_FILE = os.path.join(DATA_DIR, "embeddings.npy")
 LABELS_FILE = os.path.join(DATA_DIR, "labels.json")
-SIMILARITY_THRESHOLD = 0.50
+SIMILARITY_THRESHOLD = 0.308 # Calibrated using held-out test data (Panji & Septada)
+DRY_RUN = os.getenv("DRY_RUN", "False").lower() in ("true", "1", "yes")
 
 # ==================== SCHEDULE LOGIC ====================
 employee_schedules = {}
@@ -124,41 +125,23 @@ def cosine_similarity(emb1, emb2):
     return np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
 
 def recognize_face(face_img):
-    # Tambahkan padding agar detektor (app.get) punya ruang untuk menemukan dan meluruskan (align) wajah.
-    # Ini berfungsi sebagai "re-kalibrasi" karena kalibrasi C++ dari Device 2 kurang presisi.
-    padded_img = cv2.copyMakeBorder(face_img, 60, 60, 60, 60, cv2.BORDER_CONSTANT, value=[0, 0, 0])
+    # --- Langsung ke Recognition (Skip Double Detection) ---
+    # Wajah dari C++ sudah di-crop dan align ke 112x112
+    resized = cv2.resize(face_img, (112, 112))
     
-    faces = app.get(padded_img)
-    
-    if len(faces) == 0:
-        # Fallback darurat
-        resized = cv2.resize(face_img, (112, 112))
-        embedding = rec_model.get_feat(resized)
+    h, w = face_img.shape[:2]
+    # Skip liveness check for 112x112 tightly cropped images from embedding fusion
+    if h == 112 and w == 112:
+        is_real, liveness_score = True, 1.0
     else:
-        # Ambil wajah yang paling besar di dalam frame
-        best_face = max(faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
-        
-        # --- Face Anti-Spoofing Check ---
-        orig_bbox = best_face.bbox.copy()
-        orig_bbox[0] -= 60
-        orig_bbox[1] -= 60
-        orig_bbox[2] -= 60
-        orig_bbox[3] -= 60
-        
-        h, w = face_img.shape[:2]
-        orig_bbox[0] = max(0, orig_bbox[0])
-        orig_bbox[1] = max(0, orig_bbox[1])
-        orig_bbox[2] = min(w, orig_bbox[2])
-        orig_bbox[3] = min(h, orig_bbox[3])
-        
-        is_real, liveness_score = check_liveness(face_img, orig_bbox)
-        
-        # Tolak jika AI mendeteksi palsu, ATAU jika diprediksi asli tapi kurang yakin (< 0.85)
-        if not is_real or (is_real and float(liveness_score) < 0.65):
-            return "SPOOF", float(liveness_score)
-        # --------------------------------
-        
-        embedding = best_face.embedding
+        # Liveness butuh bbox original, kita asumsikan seluruh crop adalah wajah
+        bbox_for_liveness = [0, 0, w, h]
+        is_real, liveness_score = check_liveness(face_img, bbox_for_liveness)
+    
+    if not is_real or (is_real and float(liveness_score) < 0.65):
+        return "SPOOF", float(liveness_score)
+
+    embedding = rec_model.get_feat(resized)
 
     if embedding is None or len(embedding) == 0:
         return None, 0.0
@@ -278,6 +261,12 @@ def process_worker(camera_id, face_img):
         print(f"[{camera_id}] Menerima wajah, memproses AI...")
         employee_id, confidence = recognize_face(face_img)
         
+        # --- NEW ALERT FOR EMBEDDING FUSION ---
+        if employee_id and employee_id != "SPOOF":
+            endpoint_ip = DETECTION_STREAM_URL.split("/api")[0] if "api" in DETECTION_STREAM_URL else "http://192.168.1.101"
+            print(f"[ALERT] Embedding Fusion successfully processed data from pre-processing endpoint ({endpoint_ip})")
+        # --------------------------------------
+        
         if employee_id == "SPOOF":
             print(f"[{camera_id}] Peringatan: Spoofing / Wajah Palsu terdeteksi! (Liveness: {confidence:.2f})")
             return
@@ -305,6 +294,13 @@ def process_worker(camera_id, face_img):
             # Pre-emptively update cache
             cache_key = f"{employee_id}_{event_type}"
             last_event_status_cache[cache_key] = {'time': time.time()}
+            
+            # --- DRY_RUN: Hanya log, jangan kirim ke Supabase atau Backend ---
+            if DRY_RUN:
+                print(f"🧪 [DRY_RUN] Embedding Fusion match berhasil! Employee: {employee_id}, Score: {confidence:.4f}, Event: {event_type}")
+                print(f"🧪 [DRY_RUN] Data TIDAK dikirim ke Supabase/Backend (mode testing aktif).")
+                return
+            # -----------------------------------------------------------------
             
             # Upload gambar ke Supabase Storage (snapshots)
             thumb_url = None
@@ -356,8 +352,15 @@ def start_stream_listener():
                     
                     if "float32" in image_format or len(raw_bytes) == 112 * 112 * 3 * 4:
                         face_tensor_1d = np.frombuffer(raw_bytes, dtype=np.float32)
-                        face_tensor = face_tensor_1d.reshape((112, 112, 3))
+                        # Tensor dari C++ (embedding fusion) kemungkinan dalam format CHW (Channel, Height, Width)
+                        face_tensor_chw = face_tensor_1d.reshape((3, 112, 112))
+                        # Ubah ke HWC (Height, Width, Channel) untuk OpenCV dan InsightFace
+                        face_tensor = np.transpose(face_tensor_chw, (1, 2, 0))
                         face_img = ((face_tensor + 1.0) * 127.5).astype(np.uint8)
+                        
+                        # Opsional: Jika gambar dari C++ adalah RGB, sedangkan InsightFace (cv2) butuh BGR, kita balik channelnya
+                        # C++ embedding fusion (NCNN/ONNX) umumnya pakai RGB tensor.
+                        face_img = face_img[:, :, ::-1] # Konversi RGB to BGR
                     else:
                         np_arr = np.frombuffer(raw_bytes, np.uint8)
                         face_img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)

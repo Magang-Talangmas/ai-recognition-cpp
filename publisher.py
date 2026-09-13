@@ -94,7 +94,10 @@ def start_iriun_camera(cam: dict):
     # source dari .env bisa berupa index device (angka) atau path
     cam_index = int(source) if source.isdigit() else source
 
-    cap = cv2.VideoCapture(cam_index)
+    if isinstance(cam_index, int) and os.name == 'nt':
+        cap = cv2.VideoCapture(cam_index, cv2.CAP_DSHOW)
+    else:
+        cap = cv2.VideoCapture(cam_index)
     # Set buffer internal OpenCV ke 1 untuk meminimalkan delay pada network stream (seperti IP Webcam)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     
