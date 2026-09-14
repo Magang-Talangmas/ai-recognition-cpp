@@ -1,20 +1,18 @@
-version: '3.8'
 services:
-  mediamtx:
-    image: bluenviron/mediamtx:latest
-    container_name: mediamtx
-    ports:
-      - "8554:8554" # RTSP
-      - "1935:1935" # RTMP
-      - "8888:8888" # HLS
-      - "8889:8889" # WebRTC
-    environment:
-      - MTX_PROTOCOLS=tcp
+  ai-mobile-api:
+    build: .
+    container_name: ai-mobile-api
+    command: python mobile_api.py
     restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
 
-  redis:
-    image: redis:alpine
-    container_name: redis_middleware
-    ports:
-      - "6379:6379"
+  ai-recognition-worker:
+    build: .
+    container_name: ai-recognition-worker
+    command: python recognition.py
     restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
