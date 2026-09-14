@@ -567,7 +567,8 @@
 
     async function connectWebRTC(cam, webrtcHost) {
       const video = document.getElementById('video-' + cam.id);
-      const whepUrl = `http://${webrtcHost}/${cam.path}/whep`;
+      const cleanPath = cam.path.split('/').filter(Boolean).join('/');
+      const whepUrl = `http://${webrtcHost}/${cleanPath}/whep`;
 
       const pc = new RTCPeerConnection({ iceServers: [] });
       activeConnections[cam.id] = activeConnections[cam.id] || {};
@@ -614,7 +615,8 @@
 
     function connectHLS(cam, hlsHost) {
       const video = document.getElementById('video-' + cam.id);
-      const hlsUrl = `http://${hlsHost}/${cam.path}/index.m3u8`;
+      const cleanPath = cam.path.split('/').filter(Boolean).join('/');
+      const hlsUrl = `http://${hlsHost}/${cleanPath}/index.m3u8`;
 
       setBadge(cam.id, 'hls', 'HLS fallback');
       document.getElementById('proto-' + cam.id).textContent = 'HLS (fallback)';
@@ -785,17 +787,40 @@
         // Normalisasi jika koordinat berupa absolut pixel ( > 1 ), ubah jadi relatif (0-1).
         let normX = face.x <= 1 ? face.x : face.x / srcW;
         let normY = face.y <= 1 ? face.y : face.y / srcH;
-        let normW = face.w <= 1 ? face.w : face.w / srcW;
-        let normH = face.h <= 1 ? face.h : face.h / srcH;
+        let normW = face.w <= 1 ? face.w : (face.w || face.width) / srcW;
+        let normH = face.h <= 1 ? face.h : (face.h || face.height) / srcH;
 
-        // Mapping ke ukuran canvas FE saat ini
-        let x = normX * canvas.width;
-        let y = normY * canvas.height;
-        let w = normW * canvas.width;
-        let h = normH * canvas.height;
+        // Cek fallback properti jika w/h null
+        if (!normW && face.width) normW = face.width <= 1 ? face.width : face.width / srcW;
+        if (!normH && face.height) normH = face.height <= 1 ? face.height : face.height / srcH;
+
+        // Ambil resolusi asli video dari WebRTC
+        const vw = video.videoWidth || srcW;
+        const vh = video.videoHeight || srcH;
+        
+        // Kalkulasi offset (Letterbox/Pillarbox) akibat object-fit: contain
+        const scale = Math.min(canvas.width / vw, canvas.height / vh);
+        const drawnWidth = vw * scale;
+        const drawnHeight = vh * scale;
+        const offsetX = (canvas.width - drawnWidth) / 2;
+        const offsetY = (canvas.height - drawnHeight) / 2;
+
+        // Mapping akurat ke ukuran canvas yang terlihat
+        let x = offsetX + (normX * drawnWidth);
+        let y = offsetY + (normY * drawnHeight);
+        let w = normW * drawnWidth;
+        let h = normH * drawnHeight;
+
         ctx.strokeStyle = '#2dd4dd'; // Cyan
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.strokeRect(x, y, w, h);
+        
+        // Gambar label jika ada
+        if (face.label || face.name) {
+           ctx.fillStyle = '#2dd4dd';
+           ctx.font = '14px Arial';
+           ctx.fillText(face.label || face.name, x, y - 5);
+        }
       });
     }
 
