@@ -1,0 +1,81 @@
+name: CD — Deploy AI Engine (Detection, Recognition & Stream)
+
+on:
+  push:
+    branches:
+      - feat/recognition-face
+      - gpu-migration
+      - stream
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Pop!_OS Server
+    runs-on: self-hosted
+
+    steps:
+      - name: Deploy Sesuai Branch yang Di-push
+        run: |
+          set -e
+          export PATH=$PATH:/usr/local/bin:/usr/bin:/bin
+
+          echo "=========================================================="
+          echo "  Deploying Branch: ${{ github.ref_name }}"
+          echo "=========================================================="
+
+          # ------------------------------------------------------------
+          # KASUS 1: Branch feat/recognition-face (Modul Pengenal Wajah)
+          # ------------------------------------------------------------
+          if [ "${{ github.ref_name }}" = "feat/recognition-face" ]; then
+            echo "[1/3] Masuk ke direktori ai-recognition..."
+            cd /home/popos/projek-anakmagang/ai-recognition
+            
+            echo "[2/3] Menarik kode terbaru dari GitHub..."
+            git fetch origin feat/recognition-face
+            git reset --hard origin/feat/recognition-face
+            
+            echo "[3/3] Rebuild & Restart Docker Container (Mobile API & Recognition Worker)..."
+            docker compose up -d --build
+            
+            echo "DEPLOY SUKSES: ai-recognition sudah ter-update!"
+
+          # ------------------------------------------------------------
+          # KASUS 2: Branch gpu-migration (Modul Deteksi Wajah CCTV)
+          # ------------------------------------------------------------
+          elif [ "${{ github.ref_name }}" = "gpu-migration" ]; then
+            echo "[1/3] Masuk ke direktori ai-detection..."
+            cd /home/popos/projek-anakmagang/ai-detection
+            
+            echo "[2/3] Menarik kode terbaru dari GitHub..."
+            git fetch origin gpu-migration
+            git reset --hard origin/gpu-migration
+            
+            echo "[3/3] Rebuild & Restart Docker Container (FastAPI Port 8000)..."
+            docker compose up -d --build
+            
+            echo "DEPLOY SUKSES: ai-detection sudah ter-update!"
+
+          # ------------------------------------------------------------
+          # KASUS 3: Branch stream (Penyalur Siaran CCTV ke MediaMTX)
+          # ------------------------------------------------------------
+          elif [ "${{ github.ref_name }}" = "stream" ]; then
+            echo "[1/3] Masuk ke direktori ai-stream..."
+            cd /home/popos/projek-anakmagang/ai-stream
+            
+            echo "[2/3] Menarik kode terbaru dari GitHub..."
+            git fetch origin stream
+            git reset --hard origin/stream
+            
+            echo "[3/3] Restart PM2 ai-stream-publisher..."
+            pm2 restart ai-stream-publisher || pm2 start "python3 publisher.py" --name ai-stream-publisher
+            pm2 save
+            
+            echo "DEPLOY SUKSES: ai-stream-publisher sudah ter-update!"
+
+          else
+            echo "Branch ${{ github.ref_name }} tidak memiliki konfigurasi auto-deploy."
+          fi
+
+          echo "=========================================================="
+          echo "  Deployment Selesai dengan Sukses!"
+          echo "=========================================================="
