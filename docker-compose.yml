@@ -1,25 +1,18 @@
 services:
-  mediamtx:
-    image: bluenviron/mediamtx:latest
-    container_name: mediamtx
-    ports:
-      - "8554:8554" # RTSP
-      - "1935:1935" # RTMP
-      - "8888:8888" # HLS
-      - "8889:8889" # WebRTC HTTP
-      - "8189:8189/udp" # WebRTC ICE UDP
-      - "8189:8189/tcp" # WebRTC ICE TCP
-    environment:
-      - MTX_PROTOCOLS=tcp
-      - MTX_WEBRTCADDITIONALHOSTS=192.168.77.171
-      - MTX_WEBRTCALLOWORIGIN=*
-      - MTX_HLSALLOWORIGIN=*
-      - MTX_APIALLOWORIGIN=*
+  ai-mobile-api:
+    build: .
+    container_name: projek-anakmagang-ai-mobile-api
+    command: python mobile_api.py
     restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
 
-  redis:
-    image: redis:alpine
-    container_name: redis_middleware
-    ports:
-      - "6379:6379"
+  ai-recognition-worker:
+    build: .
+    container_name: projek-anakmagang-ai-recognition-worker
+    command: python recognition.py
     restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env

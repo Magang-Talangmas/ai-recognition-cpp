@@ -12,8 +12,9 @@ import psycopg2
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import insightface
+import io
 from insightface.app import FaceAnalysis
-from supabase import create_client, Client
+from minio import Minio
 import threading
 from anti_spoof import check_liveness
 
@@ -24,14 +25,30 @@ load_dotenv()
 _camera_busy: dict[str, bool] = {}
 _camera_lock = threading.Lock()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SECRET_KEY")
+# --- MinIO Storage Konfigurasi (Lokal / On-Premise) ---
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+MINIO_PUBLIC_URL = os.getenv("MINIO_PUBLIC_URL", "http://localhost:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "recognition")
 
-if SUPABASE_URL and SUPABASE_KEY:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+minio_client = None
+if MINIO_ENDPOINT and MINIO_ACCESS_KEY and MINIO_SECRET_KEY:
+    try:
+        clean_endpoint = MINIO_ENDPOINT.replace("http://", "").replace("https://", "")
+        minio_client = Minio(
+            clean_endpoint,
+            access_key=MINIO_ACCESS_KEY,
+            secret_key=MINIO_SECRET_KEY,
+            secure=MINIO_ENDPOINT.startswith("https://")
+        )
+        if not minio_client.bucket_exists(MINIO_BUCKET):
+            minio_client.make_bucket(MINIO_BUCKET)
+        print(f"[MinIO] Berhasil terhubung ke MinIO lokal (bucket: {MINIO_BUCKET}).")
+    except Exception as e:
+        print(f"[MinIO Warning] Gagal inisialisasi MinIO ({e}), upload gambar tidak akan berfungsi.")
 else:
-    supabase = None
-    print("Warning: Kredensial Supabase tidak lengkap, upload gambar tidak akan berfungsi.")
+    print("Warning: Kredensial MinIO tidak lengkap, upload gambar tidak akan berfungsi.")
 
 DETECTION_STREAM_URL = os.getenv("DETECTION_STREAM_URL", "http://192.168.43.11:8000/api/v1/faces/stream")
 BACKEND_API_URL = os.getenv("BACKEND_API_URL", "http://localhost:5000/api/v1/live/recognition-events")
@@ -302,23 +319,25 @@ def process_worker(camera_id, face_img):
                 return
             # -----------------------------------------------------------------
             
-            # Upload gambar ke Supabase Storage (snapshots)
+            # Upload gambar ke MinIO Storage lokal (snapshots)
             thumb_url = None
-            if supabase:
+            if minio_client:
                 try:
                     success, buffer = cv2.imencode('.jpg', face_img)
                     if success:
                         file_bytes = buffer.tobytes()
                         file_name = f"snapshots/{uuid.uuid4()}.jpg"
-                        
-                        supabase.storage.from_("recognition").upload(
-                            file_name, 
-                            file_bytes,
-                            {"content-type": "image/jpeg"}
+                        minio_client.put_object(
+                            bucket_name=MINIO_BUCKET,
+                            object_name=file_name,
+                            data=io.BytesIO(file_bytes),
+                            length=len(file_bytes),
+                            content_type="image/jpeg"
                         )
-                        thumb_url = supabase.storage.from_("recognition").get_public_url(file_name)
+                        base_pub = MINIO_PUBLIC_URL.rstrip('/')
+                        thumb_url = f"{base_pub}/{MINIO_BUCKET}/{file_name}"
                 except Exception as upload_err:
-                    print(f"[Supabase Error] Gagal upload gambar: {upload_err}")
+                    print(f"[MinIO Error] Gagal upload gambar snapshot: {upload_err}")
                     
             # Kirim ke API
             send_to_backend(employee_id, camera_id, confidence, thumb_url, event_type)
