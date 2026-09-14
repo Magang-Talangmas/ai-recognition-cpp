@@ -1,22 +1,6 @@
-# Environments
-.env
-venv/
-env/
-__pycache__/
-*.pyc
-
-# IDEs
-.vscode/
-.idea/
-
-# Data & Models
-data/
-models/
-*.onnx
-
-# CMake
+﻿vcpkg/
 build/
-CMakeCache.txt
-CMakeFiles/
-Makefile
-cmake_install.cmake
+.env
+ffmpeg.zip
+inspect_onnx.cpp
+scrfd_ref.cpp
