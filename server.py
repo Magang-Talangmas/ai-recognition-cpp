@@ -1,10 +1,12 @@
 import os
 import subprocess
+import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 app = FastAPI(title="Media Server Control Plane")
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,11 +47,12 @@ def start_camera_worker(config: CameraConfig):
     try:
         # Example: pm2 start rtsp_worker.py --name "cam_1" -- "cam_1" "rtsp://localhost:8554/live/cam_1"
         cmd = [
-            "pm2", "start", "rtsp_worker.py", 
-            "--name", worker_name, 
-            "--", config.camera_id, config.rtsp_url
+            "pm2", "start", "rtsp_worker.py",
+            "--interpreter", sys.executable,
+            "--name", worker_name,
+            "--", config.camera_id, config.rtsp_url,
         ]
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True) # use shell=True on windows
+        result = subprocess.run(cmd, cwd=PROJECT_DIR, capture_output=True, text=True)
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=result.stderr)
         
@@ -63,9 +66,9 @@ def stop_camera_worker(camera_id: str):
     worker_name = f"cam_{camera_id}"
     try:
         cmd = ["pm2", "stop", worker_name]
-        subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        subprocess.run(cmd, cwd=PROJECT_DIR, capture_output=True, text=True)
         # Optionally delete from PM2 list
-        subprocess.run(["pm2", "delete", worker_name], shell=True, capture_output=True, text=True)
+        subprocess.run(["pm2", "delete", worker_name], cwd=PROJECT_DIR, capture_output=True, text=True)
         return {"status": "stopped", "worker_name": worker_name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
