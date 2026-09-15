@@ -67,11 +67,19 @@ jobs:
             git fetch origin stream
             git reset --hard origin/stream
             
-            echo "[3/3] Restart PM2 ai-stream-publisher..."
-            pm2 restart ai-stream-publisher || pm2 start "python3 publisher.py" --name ai-stream-publisher
+            echo "[3/4] Menyiapkan Python environment untuk Control Plane..."
+            if [ ! -x .venv/bin/python ]; then
+              python3 -m venv .venv
+            fi
+            .venv/bin/pip install --upgrade pip
+            .venv/bin/pip install -r requirements.txt
+
+            echo "[4/4] Menjalankan PM2 media_control_plane..."
+            pm2 startOrRestart ecosystem.config.js --env production
             pm2 save
-            
-            echo "DEPLOY SUKSES: ai-stream-publisher sudah ter-update!"
+
+            curl -sS --fail --retry 5 --retry-delay 1 http://127.0.0.1:8001/ > /dev/null
+            echo "DEPLOY SUKSES: media_control_plane berjalan di port 8001."
 
           else
             echo "Branch ${{ github.ref_name }} tidak memiliki konfigurasi auto-deploy."
