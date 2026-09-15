@@ -25,19 +25,23 @@ jobs:
       - name: Check Python syntax
         run: python -m compileall -q -x '(venv|\.venv|__pycache__)' .
 
-      - name: Resolve Python dependencies
-        run: python -m pip install --dry-run -r requirements.txt
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
 
       - name: Validate Docker Compose
         run: |
           cp .env.example .env
           docker compose config -q
 
+      - name: Verify Control Plane imports
+        run: |
+          python -c "import server; assert server.control_plane_port == 8011; assert server.read_root() == {'status': 'Media Server Control Plane is Running'}"
+
   deploy:
     name: Deploy to Pop!_OS Server
     needs: validate
     if: github.event_name == 'push' && github.ref == 'refs/heads/stream'
-    runs-on: [self-hosted, linux, x64, ai-server]
+    runs-on: [self-hosted, Linux, X64, ai-ml]
     steps:
       - name: Deploy Stream
         run: |
@@ -47,11 +51,10 @@ jobs:
           echo "=========================================================="
           echo "  Deploying Branch: stream"
           echo "=========================================================="
-          echo "  Hostname: $(hostname)"
-          echo "  Directory: $(pwd)"
-          
           echo "[1/4] Masuk ke direktori dan sinkronisasi Git..."
           cd /home/popos/projek-anakmagang/ai-stream
+          echo "  Hostname: $(hostname)"
+          echo "  Directory: $(pwd)"
           git fetch origin stream
           git reset --hard origin/stream
           
