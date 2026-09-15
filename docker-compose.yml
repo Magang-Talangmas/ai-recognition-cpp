@@ -23,7 +23,7 @@ services:
       - MTX_APIALLOWORIGIN=*
       
       # --- CCTV RTSP Proxy ---
-      - MTX_PATHS_CCTV1_SOURCE=rtsp://admin:bismillah123@192.168.77.209:554
+      - MTX_PATHS_CCTV1_SOURCE=${CCTV1_RTSP_URL}
       - MTX_PATHS_CCTV1_SOURCEONDEMAND=yes
     restart: unless-stopped
 
