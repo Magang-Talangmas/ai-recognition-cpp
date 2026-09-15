@@ -1,3 +1,13 @@
+# ==============================================================================
+# 🚨 PERINGATAN KERAS UNTUK TIM DEVOPS / SERVER 🚨
+# FILE INI HANYA UNTUK DEVELOPMENT LOKAL!
+# ==============================================================================
+# Di server production, MediaMTX DIKELOLA OLEH docker-compose.yml UTAMA
+# (/home/popos/projek-anakmagang/docker-compose.yml).
+# DILARANG KERAS menjalankan `docker compose up -d` di branch `stream` ini 
+# di production karena akan menyebabkan port bentrok (1935, 8554, dkk)
+# dan duplikasi container pengelola MediaMTX!
+# ==============================================================================
 services:
   mediamtx:
     image: bluenviron/mediamtx:latest

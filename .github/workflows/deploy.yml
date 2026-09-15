@@ -6,7 +6,6 @@ on:
       - feat/recognition-fusion
       - feat/recognition-face
       - gpu-migration
-      - stream
   workflow_dispatch:
 
 jobs:
@@ -56,30 +55,7 @@ jobs:
             
             echo "DEPLOY SUKSES: ai-detection sudah ter-update!"
 
-          # ------------------------------------------------------------
-          # KASUS 3: Branch stream (Penyalur Siaran CCTV ke MediaMTX)
-          # ------------------------------------------------------------
-          elif [ "${{ github.ref_name }}" = "stream" ]; then
-            echo "[1/3] Masuk ke direktori ai-stream..."
-            cd /home/popos/projek-anakmagang/ai-stream
-            
-            echo "[2/3] Menarik kode terbaru dari GitHub..."
-            git fetch origin stream
-            git reset --hard origin/stream
-            
-            echo "[3/4] Menyiapkan Python environment untuk Control Plane..."
-            if [ ! -x .venv/bin/python ]; then
-              python3 -m venv .venv
-            fi
-            .venv/bin/pip install --upgrade pip
-            .venv/bin/pip install -r requirements.txt
-
-            echo "[4/4] Menjalankan PM2 media_control_plane..."
-            pm2 startOrRestart ecosystem.config.js --env production
-            pm2 save
-
-            curl -sS --fail --retry 5 --retry-delay 1 http://127.0.0.1:8001/ > /dev/null
-            echo "DEPLOY SUKSES: media_control_plane berjalan di port 8001."
+          # (Branch stream kini memiliki workflow ci.yml khusus yang mencakup CI dan CD)
 
           else
             echo "Branch ${{ github.ref_name }} tidak memiliki konfigurasi auto-deploy."

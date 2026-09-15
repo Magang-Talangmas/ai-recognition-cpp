@@ -8,6 +8,10 @@ from pydantic import BaseModel
 app = FastAPI(title="Media Server Control Plane")
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+from dotenv import load_dotenv
+load_dotenv()
+control_plane_port = int(os.getenv("CONTROL_PLANE_PORT", "8011"))
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -96,5 +100,9 @@ def list_cameras():
 
 if __name__ == "__main__":
     import uvicorn
-    # uvicorn server:app --host 0.0.0.0 --port 8001
-    uvicorn.run("server:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=control_plane_port,
+        reload=False,
+    )
