@@ -403,6 +403,11 @@
           <input type="text" id="hlsHost" placeholder="192.168.1.10:8888" value="">
         </div>
       </div>
+      
+      <div style="margin-top: 15px;">
+        <label>URL API BBox SSE (Global untuk semua kamera)</label>
+        <input type="text" id="sseUrlGlobal" placeholder="http://192.168.77.172:8000/api/v1/live-bboxes" value="">
+      </div>
     </div>
 
     <div class="panel">
@@ -465,10 +470,6 @@
       <label>Path MediaMTX</label>
       <input type="text" class="cam-path" placeholder="cam${camCounter}" value="${defaultPath || ''}">
     </div>
-    <div>
-      <label>URL BBox SSE (Opsional)</label>
-      <input type="text" class="cam-sse" placeholder="http://.../live-bbox/cam_01" value="">
-    </div>
     <button class="remove-btn small" data-remove="${id}">Hapus</button>
   `;
       camConfigList.appendChild(row);
@@ -491,7 +492,7 @@
         id: row.dataset.id,
         name: row.querySelector('.cam-name').value.trim() || row.dataset.id,
         path: row.querySelector('.cam-path').value.trim(),
-        sseUrl: row.querySelector('.cam-sse').value.trim()
+        sseUrl: document.getElementById('sseUrlGlobal').value.trim()
       })).filter(c => c.path);
     }
 
@@ -692,43 +693,57 @@
             const data = JSON.parse(event.data);
             if (data.status === "connected") return;
 
-            let faces = [];
-            if (data.bounding_box) {
-              faces.push({
+            // Filter data agar BBox tidak tertukar antar kamera (Multiplexing)
+            if (data.camera_id) {
+               const expectedId = cam.path.replace('/', '_'); // "live/cam_1" menjadi "live_cam_1"
+               if (data.camera_id !== expectedId && data.camera_id !== cam.path && data.camera_id !== cam.id) {
+                   return; // Abaikan! Ini data BBox milik kamera lain.
+               }
+            }
+
+            const conn = activeConnections[cam.id];
+            
+            // Logika pengelompokan wajah berdasarkan frame (timestamp)
+            // Karena Pre-processing mengirim 1 SSE Event per 1 Wajah (bukan 1 array wajah per frame)
+            if (data.timestamp_ms) {
+               if (conn.currentTimestamp !== data.timestamp_ms) {
+                  conn.facesBuffer = []; // Bersihkan buffer untuk frame baru
+                  conn.currentTimestamp = data.timestamp_ms;
+               }
+            } else {
+               // Jika tidak ada timestamp, anggap 1 event = 1 frame utuh
+               conn.facesBuffer = []; 
+            }
+
+            if (data.bounding_boxes && Array.isArray(data.bounding_boxes)) {
+              data.bounding_boxes.forEach(item => {
+                if (item.bounding_box) {
+                  conn.facesBuffer.push({
+                    x: item.bounding_box.x,
+                    y: item.bounding_box.y,
+                    w: item.bounding_box.width,
+                    h: item.bounding_box.height
+                  });
+                }
+              });
+            } else if (data.bounding_box) {
+              conn.facesBuffer.push({
                 x: data.bounding_box.x,
                 y: data.bounding_box.y,
                 w: data.bounding_box.width,
-                h: data.bounding_box.height,
-                label: data.name
+                h: data.bounding_box.height
               });
             } else if (data.faces) {
-              faces = data.faces;
+              conn.facesBuffer = data.faces;
             } else if (Array.isArray(data)) {
-              faces = data;
+              conn.facesBuffer = data;
             }
 
-            // Kalkulasi resolusi source 16:9 berdasarkan resolusi asli video jika tidak ada dari JSON
-            const video = document.getElementById('video-' + cam.id);
+            // Jika C++ tidak mengirimkan source_width, default ke 1
             let srcW = data.source_width || 1;
             let srcH = data.source_height || 1;
 
-            if (srcW === 1 && srcH === 1 && video && video.videoWidth) {
-              const vw = video.videoWidth;
-              const vh = video.videoHeight;
-              const targetRatio = 16 / 9;
-              const currentRatio = vw / vh;
-              if (currentRatio < targetRatio) {
-                // Terlalu kotak, AI melakukan crop atas-bawah
-                srcW = vw;
-                srcH = vw / targetRatio;
-              } else {
-                // Terlalu lebar, AI melakukan crop kiri-kanan
-                srcH = vh;
-                srcW = vh * targetRatio;
-              }
-            }
-
-            drawBBox(cam.id, faces, srcW, srcH);
+            drawBBox(cam.id, conn.facesBuffer, srcW, srcH);
           } catch (err) {
             console.error("SSE parse error", err);
           }
@@ -769,9 +784,9 @@
     });
 
     function drawBBox(camId, faces, srcW = 1, srcH = 1) {
-      // srcW & srcH default 1 jika data koordinat sudah relatif (0-1).
+      const video = document.getElementById('video-' + camId);
       const canvas = document.getElementById('canvas-' + camId);
-      if (!canvas) return;
+      if (!canvas || !video) return;
       const ctx = canvas.getContext('2d');
 
       // Resize canvas internal buffer to match its actual display size di UI
@@ -784,20 +799,23 @@
       if (!faces || !faces.length) return;
 
       faces.forEach(face => {
-        // Normalisasi jika koordinat berupa absolut pixel ( > 1 ), ubah jadi relatif (0-1).
-        let normX = face.x <= 1 ? face.x : face.x / srcW;
-        let normY = face.y <= 1 ? face.y : face.y / srcH;
-        let normW = face.w <= 1 ? face.w : (face.w || face.width) / srcW;
-        let normH = face.h <= 1 ? face.h : (face.h || face.height) / srcH;
-
-        // Cek fallback properti jika w/h null
-        if (!normW && face.width) normW = face.width <= 1 ? face.width : face.width / srcW;
-        if (!normH && face.height) normH = face.height <= 1 ? face.height : face.height / srcH;
-
         // Ambil resolusi asli video dari WebRTC
         const vw = video.videoWidth || srcW;
         const vh = video.videoHeight || srcH;
         
+        let actualSrcW = srcW > 1 ? srcW : vw;
+        let actualSrcH = srcH > 1 ? srcH : vh;
+
+        // Normalisasi jika koordinat berupa absolut pixel ( > 1 ), ubah jadi relatif (0-1).
+        let normX = face.x <= 1 ? face.x : face.x / actualSrcW;
+        let normY = face.y <= 1 ? face.y : face.y / actualSrcH;
+        let normW = face.w <= 1 ? face.w : (face.w || face.width) / actualSrcW;
+        let normH = face.h <= 1 ? face.h : (face.h || face.height) / actualSrcH;
+
+        // Cek fallback properti jika w/h null
+        if (!normW && face.width) normW = face.width <= 1 ? face.width : face.width / actualSrcW;
+        if (!normH && face.height) normH = face.height <= 1 ? face.height : face.height / actualSrcH;
+
         // Kalkulasi offset (Letterbox/Pillarbox) akibat object-fit: contain
         const scale = Math.min(canvas.width / vw, canvas.height / vh);
         const drawnWidth = vw * scale;
@@ -811,16 +829,11 @@
         let w = normW * drawnWidth;
         let h = normH * drawnHeight;
 
-        ctx.strokeStyle = '#2dd4dd'; // Cyan
-        ctx.lineWidth = 3;
-        ctx.strokeRect(x, y, w, h);
-        
-        // Gambar label jika ada
-        if (face.label || face.name) {
-           ctx.fillStyle = '#2dd4dd';
-           ctx.font = '14px Arial';
-           ctx.fillText(face.label || face.name, x, y - 5);
-        }
+          ctx.strokeStyle = '#2dd4dd'; // Cyan
+          ctx.lineWidth = 3;
+          ctx.strokeRect(x, y, w, h);
+          
+          // Teks nama dinonaktifkan sesuai permintaan pengguna agar UI lebih bersih
       });
     }
 
