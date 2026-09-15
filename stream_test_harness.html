@@ -403,7 +403,11 @@
           <input type="text" id="hlsHost" placeholder="192.168.1.10:8888" value="">
         </div>
       </div>
-      
+
+      <div class="config-row server" style="display: none;">
+        <!-- Username & Password UI dihapus sementara karena bug CORS MediaMTX -->
+      </div>
+
       <div style="margin-top: 15px;">
         <label>URL API BBox SSE (Global untuk semua kamera)</label>
         <input type="text" id="sseUrlGlobal" placeholder="http://192.168.77.172:8000/api/v1/live-bboxes" value="">
@@ -695,24 +699,24 @@
 
             // Filter data agar BBox tidak tertukar antar kamera (Multiplexing)
             if (data.camera_id) {
-               const expectedId = cam.path.replace('/', '_'); // "live/cam_1" menjadi "live_cam_1"
-               if (data.camera_id !== expectedId && data.camera_id !== cam.path && data.camera_id !== cam.id) {
-                   return; // Abaikan! Ini data BBox milik kamera lain.
-               }
+              const expectedId = cam.path.replace('/', '_'); // "live/cam_1" menjadi "live_cam_1"
+              if (data.camera_id !== expectedId && data.camera_id !== cam.path && data.camera_id !== cam.id) {
+                return; // Abaikan! Ini data BBox milik kamera lain.
+              }
             }
 
             const conn = activeConnections[cam.id];
-            
+
             // Logika pengelompokan wajah berdasarkan frame (timestamp)
             // Karena Pre-processing mengirim 1 SSE Event per 1 Wajah (bukan 1 array wajah per frame)
             if (data.timestamp_ms) {
-               if (conn.currentTimestamp !== data.timestamp_ms) {
-                  conn.facesBuffer = []; // Bersihkan buffer untuk frame baru
-                  conn.currentTimestamp = data.timestamp_ms;
-               }
+              if (conn.currentTimestamp !== data.timestamp_ms) {
+                conn.facesBuffer = []; // Bersihkan buffer untuk frame baru
+                conn.currentTimestamp = data.timestamp_ms;
+              }
             } else {
-               // Jika tidak ada timestamp, anggap 1 event = 1 frame utuh
-               conn.facesBuffer = []; 
+              // Jika tidak ada timestamp, anggap 1 event = 1 frame utuh
+              conn.facesBuffer = [];
             }
 
             if (data.bounding_boxes && Array.isArray(data.bounding_boxes)) {
@@ -802,7 +806,7 @@
         // Ambil resolusi asli video dari WebRTC
         const vw = video.videoWidth || srcW;
         const vh = video.videoHeight || srcH;
-        
+
         let actualSrcW = srcW > 1 ? srcW : vw;
         let actualSrcH = srcH > 1 ? srcH : vh;
 
@@ -829,11 +833,12 @@
         let w = normW * drawnWidth;
         let h = normH * drawnHeight;
 
-          ctx.strokeStyle = '#2dd4dd'; // Cyan
-          ctx.lineWidth = 3;
-          ctx.strokeRect(x, y, w, h);
-          
-          // Teks nama dinonaktifkan sesuai permintaan pengguna agar UI lebih bersih
+        ctx.strokeStyle = '#2dd4dd'; // Cyan
+        // Kurangi ketebalan garis khusus untuk CCTV karena wajah dari jauh bisa tertutup garis tebal
+        ctx.lineWidth = camId.toLowerCase().includes('cctv') ? 1.5 : 3;
+        ctx.strokeRect(x, y, w, h);
+
+        // Teks nama dinonaktifkan sesuai permintaan pengguna agar UI lebih bersih
       });
     }
 
