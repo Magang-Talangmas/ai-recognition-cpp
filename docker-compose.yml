@@ -26,10 +26,3 @@ services:
       - MTX_PATHS_CCTV1_SOURCE=${CCTV1_RTSP_URL}
       - MTX_PATHS_CCTV1_SOURCEONDEMAND=yes
     restart: unless-stopped
-
-  redis:
-    image: redis:alpine
-    container_name: redis_middleware
-    ports:
-      - "6379:6379"
-    restart: unless-stopped

@@ -3,7 +3,8 @@ module.exports = {
     {
       name: "media_control_plane",
       script: "server.py",
-      interpreter: "python",
+      cwd: __dirname,
+      interpreter: `${__dirname}/.venv/bin/python`,
       instances: 1,
       autorestart: true,
       watch: false,
