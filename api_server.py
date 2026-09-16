@@ -240,13 +240,13 @@ async def stream_faces(request: Request):
     )
 
 
-@app.get("/api/v1/live-bbox", tags=["Faces"], summary="Lightweight SSE stream for Bounding Boxes only (Unified)")
+@app.get("/api/v1/live-bboxes", tags=["Faces"], summary="Lightweight SSE stream for Bounding Boxes Array")
 async def stream_live_bbox(request: Request):
     """
     Server-Sent Events (SSE) super ringan khusus untuk tim Frontend.
-    Mengirimkan semua Bounding Box dari semua kamera (Unified).
+    Mengirimkan Array Bounding Box dari semua kamera.
     """
-    q = deque(maxlen=100)
+    q = deque(maxlen=200)
     with lock:
         bbox_subscribers.append(q)
 
@@ -263,10 +263,30 @@ async def stream_live_bbox(request: Request):
                         items = list(q)
                         q.clear()
                         
-                for item in items:
-                    yield f"data: {json.dumps(item)}\n\n"
+                if items:
+                    # Kelompokkan Bounding Box berdasarkan kamera
+                    grouped_data = {}
+                    for item in items:
+                        cam = item["camera_id"]
+                        if cam not in grouped_data:
+                            grouped_data[cam] = {
+                                "camera_id": cam,
+                                "timestamp_ms": item["timestamp_ms"],
+                                "bounding_boxes": []
+                            }
+                        if item.get("bounding_box"):
+                            # Gabungkan bbox dengan name agar FE bisa menampilkan tulisan Unknown
+                            face_data = {
+                                "bounding_box": item["bounding_box"],
+                                "name": item.get("name", "Unknown")
+                            }
+                            grouped_data[cam]["bounding_boxes"].append(face_data)
+                            
+                    # Kirim data per kamera dalam bentuk Array
+                    for cam, payload in grouped_data.items():
+                        yield f"data: {json.dumps(payload)}\n\n"
                 
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.05) # Refresh 20x sedetik
         finally:
             with lock:
                 if q in bbox_subscribers:
