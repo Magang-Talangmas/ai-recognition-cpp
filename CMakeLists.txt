@@ -45,13 +45,33 @@ FetchContent_Declare(httplib
 )
 FetchContent_MakeAvailable(httplib)
 
-# For Redis, we expect redis++ and hiredis to be installed on the system
-# vcpkg install hiredis redis-plus-plus
+# Hiredis is provided by the operating system on Linux.
 find_path(HIREDIS_INCLUDE_DIRS hiredis/hiredis.h)
 find_library(HIREDIS_LIBRARIES hiredis)
 
-find_path(REDIS_PLUS_PLUS_INCLUDE_DIRS sw/redis++/redis++.h)
-find_library(REDIS_PLUS_PLUS_LIBRARIES redis++)
+if(NOT HIREDIS_INCLUDE_DIRS OR NOT HIREDIS_LIBRARIES)
+    message(FATAL_ERROR "hiredis development files are required (install libhiredis-dev).")
+endif()
+
+# Pop!_OS does not provide a redis-plus-plus development package. Fetch a pinned
+# version during the build and link it against the system hiredis package.
+if(UNIX)
+    FetchContent_Declare(redis_plus_plus
+        GIT_REPOSITORY https://github.com/sewenew/redis-plus-plus.git
+        GIT_TAG 1.3.13
+        GIT_SHALLOW TRUE
+    )
+    set(REDIS_PLUS_PLUS_BUILD_TEST OFF CACHE BOOL "" FORCE)
+    set(REDIS_PLUS_PLUS_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(redis_plus_plus)
+    set(REDIS_PLUS_PLUS_LIBRARIES redis++_static)
+else()
+    find_path(REDIS_PLUS_PLUS_INCLUDE_DIRS sw/redis++/redis++.h)
+    find_library(REDIS_PLUS_PLUS_LIBRARIES redis++)
+    if(NOT REDIS_PLUS_PLUS_INCLUDE_DIRS OR NOT REDIS_PLUS_PLUS_LIBRARIES)
+        message(FATAL_ERROR "redis-plus-plus development files are required.")
+    endif()
+endif()
 
 include_directories(
     include
