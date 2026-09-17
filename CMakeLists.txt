@@ -14,7 +14,8 @@ if(USE_GPU)
     if(UNIX)
         include(FetchContent)
         FetchContent_Declare(onnxruntime_gpu
-            URL https://github.com/microsoft/onnxruntime/releases/download/v1.16.0/onnxruntime-linux-x64-gpu-1.16.0.tgz
+            URL https://github.com/microsoft/onnxruntime/releases/download/v1.16.1/onnxruntime-linux-x64-gpu-1.16.1.tgz
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         )
         FetchContent_MakeAvailable(onnxruntime_gpu)
         include_directories(${onnxruntime_gpu_SOURCE_DIR}/include)
@@ -65,6 +66,8 @@ if(UNIX)
     set(REDIS_PLUS_PLUS_BUILD_SHARED OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(redis_plus_plus)
     set(REDIS_PLUS_PLUS_LIBRARIES redis++_static)
+    # redis-plus-plus generates hiredis_features.h during its own build.
+    set(REDIS_PLUS_PLUS_INCLUDE_DIRS ${redis_plus_plus_BINARY_DIR}/src)
 else()
     find_path(REDIS_PLUS_PLUS_INCLUDE_DIRS sw/redis++/redis++.h)
     find_library(REDIS_PLUS_PLUS_LIBRARIES redis++)
