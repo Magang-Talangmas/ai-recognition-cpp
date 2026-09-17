@@ -3,7 +3,7 @@ module.exports = {
     {
       name: "ai-mobile-api",
       script: "mobile_api.py",
-      interpreter: "python", // Uses the python environment on the host
+      interpreter: "python3", // Uses the python environment on the host
       autorestart: true,
       watch: false,
       env: {
@@ -16,7 +16,7 @@ module.exports = {
     {
       name: "ai-recognition-worker",
       script: "recognition.py",
-      interpreter: "python",
+      interpreter: "python3",
       autorestart: true,
       watch: false,
       max_memory_restart: '1G', // Prevent memory leaks
