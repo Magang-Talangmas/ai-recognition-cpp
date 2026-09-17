@@ -43,6 +43,12 @@ int main(int argc, char** argv) {
     std::string camera_id = "cam_01";
     std::string redis_channel = "face_preprocessed_queue";
     std::string redis_url = "tcp://127.0.0.1:6379";
+    bool show_window = true;
+
+#ifndef _WIN32
+    // Production server tidak memiliki graphical display.
+    show_window = false;
+#endif
 
     bool is_cam_overridden = false;
     for (int i = 1; i < argc; ++i) {
@@ -50,6 +56,8 @@ int main(int argc, char** argv) {
         if (arg == "--url" && i + 1 < argc) rtsp_url = argv[++i];
         else if (arg == "--cam" && i + 1 < argc) { camera_id = argv[++i]; is_cam_overridden = true; }
         else if (arg == "--redis" && i + 1 < argc) redis_channel = argv[++i];
+        else if (arg == "--headless") show_window = false;
+        else if (arg == "--display") show_window = true;
     }
 
     if (!is_cam_overridden) {
@@ -68,8 +76,10 @@ int main(int argc, char** argv) {
     std::cout << "Initializing stream for: " << camera_id << std::endl;
     std::cout << "URL: " << rtsp_url << std::endl;
 
-    // Agar window OpenCV bisa di full-screen tanpa ada sisa ruang abu-abu
-    cv::namedWindow("Face Detection - " + camera_id, cv::WINDOW_NORMAL);
+    const std::string window_name = "Face Detection - " + camera_id;
+    if (show_window) {
+        cv::namedWindow(window_name, cv::WINDOW_NORMAL);
+    }
 
     reader.start();
 
@@ -132,11 +142,15 @@ int main(int argc, char** argv) {
             last_video_publish = std::chrono::steady_clock::now();
         }
 
-        cv::imshow("Face Detection - " + camera_id, display_frame);
-        if (cv::waitKey(1) == 27) break; // Tekan ESC untuk keluar
+        if (show_window) {
+            cv::imshow(window_name, display_frame);
+            if (cv::waitKey(1) == 27) break; // Tekan ESC untuk keluar
+        }
     }
 
     reader.stop();
-    cv::destroyAllWindows();
+    if (show_window) {
+        cv::destroyAllWindows();
+    }
     return 0;
 }
