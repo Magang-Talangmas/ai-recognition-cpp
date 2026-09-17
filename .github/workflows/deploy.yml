@@ -35,10 +35,28 @@ jobs:
             git fetch origin ${{ github.ref_name }}
             git reset --hard origin/${{ github.ref_name }}
             
-            echo "[3/3] Install dependencies & Restart PM2 (Mobile API & Recognition Worker)..."
-            export PATH=$PATH:~/.local/bin
-            pip install -r requirements.txt --break-system-packages
-            pm2 restart ecosystem.config.js || pm2 start ecosystem.config.js
+            echo "[3/4] Membuat virtualenv dan menginstal dependensi..."
+            python3 -m venv .venv
+            .venv/bin/python -m pip install --upgrade pip
+            .venv/bin/python -m pip install -r requirements.txt
+
+            echo "[4/4] Pindah dari Docker ke PM2..."
+            mkdir -p logs
+
+            docker stop \
+              projek-anakmagang-ai-mobile-api \
+              projek-anakmagang-ai-recognition-worker \
+              || true
+
+            if ! pm2 startOrReload ecosystem.config.js --update-env; then
+              echo "PM2 gagal start; menjalankan kembali container lama."
+              docker start \
+                projek-anakmagang-ai-mobile-api \
+                projek-anakmagang-ai-recognition-worker \
+                || true
+              exit 1
+            fi
+
             pm2 save
             
             echo "DEPLOY SUKSES: ai-recognition (${{ github.ref_name }}) sudah ter-update!"
