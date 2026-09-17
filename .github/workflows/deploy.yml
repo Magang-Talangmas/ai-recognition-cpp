@@ -37,7 +37,7 @@ jobs:
             
             echo "[3/3] Install dependencies & Restart PM2 (Mobile API & Recognition Worker)..."
             export PATH=$PATH:~/.local/bin
-            pip install -r requirements.txt
+            pip install -r requirements.txt --break-system-packages
             pm2 restart ecosystem.config.js || pm2 start ecosystem.config.js
             pm2 save
             
