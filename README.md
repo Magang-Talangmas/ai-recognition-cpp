@@ -171,7 +171,7 @@ Repositori ini telah dimigrasi dari Docker menuju Bare-Metal PM2 untuk mematuhi 
 1. Tarik repository terbaru (branch gpu-migration)
 2. Install dependency Python di level sistem:
    ``bash
-   pip install -r requirements.txt --break-system-packages
+   python3 -m venv .venv`n   source .venv/bin/activate`n   pip install -r requirements.txt
    ``
 3. Jalankan aplikasi menggunakan PM2 (Supervisor & API Server otomatis menyala):
    ``bash

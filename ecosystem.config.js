@@ -3,7 +3,7 @@ module.exports = {
     {
       name: "ai-detection-api",
       script: "api_server.py",
-      interpreter: "python3",
+      interpreter: "./.venv/bin/python",
       autorestart: true,
       watch: false,
       max_memory_restart: "2G",
@@ -17,7 +17,7 @@ module.exports = {
     {
       name: "ai-detection-supervisor",
       script: "supervisor.py",
-      interpreter: "python3",
+      interpreter: "./.venv/bin/python",
       autorestart: true,
       watch: false,
       max_memory_restart: "1G",

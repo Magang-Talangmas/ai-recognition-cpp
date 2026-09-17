@@ -10,11 +10,14 @@ API_USER = os.getenv("RTSP_USER", "admin")
 API_PASS = os.getenv("RTSP_PASS", "bismillah123")
 
 # Konfigurasi MediaMTX API
-MEDIAMTX_API_URL = "http://192.168.77.171:9997/v3/paths/list"
-MEDIAMTX_RTSP_BASE = "rtsp://192.168.77.171:8554"
+MEDIAMTX_API_URL = os.getenv("MEDIAMTX_API_URL", "http://127.0.0.1:9997/v3/paths/list")
+MEDIAMTX_RTSP_BASE = os.getenv("MEDIAMTX_RTSP_BASE", "rtsp://127.0.0.1:8554")
 
 # Path ke program C++ Face Preprocessor
-CPP_EXECUTABLE = os.path.join("build", "Release", "face_preprocessor.exe")
+if os.name == 'nt':
+    CPP_EXECUTABLE = os.path.join("build", "Release", "face_preprocessor.exe")
+else:
+    CPP_EXECUTABLE = os.path.join("build", "face_preprocessor")
 
 # Dictionary untuk melacak kamera yang sedang berjalan: { name: subprocess_object }
 active_cameras = {}

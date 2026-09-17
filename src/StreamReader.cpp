@@ -1,9 +1,20 @@
 #include "StreamReader.hpp"
 #include <iostream>
 #include <chrono>
-#include <windows.h>
 #include <fstream>
-#include <chrono>
+#include <cstdlib>
+#include <vector>
+#include <cstring>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#endif
 
 StreamReader::StreamReader(const std::string& rtsp_url, const std::string& camera_id) 
     : rtsp_url_(rtsp_url), camera_id_(camera_id), is_running_(false), has_new_frame_(false) {
@@ -41,21 +52,17 @@ std::optional<cv::Mat> StreamReader::getLatestFrame() {
 }
 
 void StreamReader::reconnect() {
-    // Dengan Named Pipe, Python proxy yang handle reconnect.
-    // Di C++, reconnect() tidak melakukan apa-apa.
     std::cout << "[StreamReader] RTSP Reconnect ditangani oleh Python Proxy..." << std::endl;
 }
 
 void StreamReader::captureLoop() {
     std::cout << "[StreamReader] Starting capture loop for: " << rtsp_url_ << std::endl;
-    
-    // Jalankan proxy Python di background dengan ID kamera
     std::cout << "[StreamReader] Memulai Python RTSP Proxy..." << std::endl;
-    // Gunakan path absolut untuk keamanan dan spesifik Miniconda Python
-    std::string cmd = "start /B D:\\MiniConda\\python.exe D:\\ai-recognition-cpp\\rtsp_proxy.py \"" + rtsp_url_ + "\" " + camera_id_;
+
+#ifdef _WIN32
+    std::string cmd = "start /B python rtsp_proxy.py \"" + rtsp_url_ + "\" " + camera_id_;
     system(cmd.c_str());
 
-    // Buka Named Pipe dinamis per kamera
     std::string pipe_name = "\\\\.\\pipe\\rtsp_pipe_" + camera_id_;
     HANDLE hPipe = CreateNamedPipeA(
         pipe_name.c_str(),
@@ -76,41 +83,68 @@ void StreamReader::captureLoop() {
         CloseHandle(hPipe);
         return;
     }
+#else
+    std::string cmd = "python3 rtsp_proxy.py \"" + rtsp_url_ + "\" " + camera_id_ + " &";
+    if (system(cmd.c_str()) != 0) {
+        std::cerr << "[StreamReader] Gagal menjalankan rtsp_proxy.py" << std::endl;
+    }
+
+    std::string pipe_name = "/tmp/rtsp_pipe_" + camera_id_;
+    unlink(pipe_name.c_str());
+    if (mkfifo(pipe_name.c_str(), 0666) == -1) {
+        std::cerr << "[StreamReader] Gagal membuat mkfifo: " << strerror(errno) << std::endl;
+        return;
+    }
+
+    std::cout << "[StreamReader] Menunggu Python Proxy terhubung ke FIFO..." << std::endl;
+    int fd = open(pipe_name.c_str(), O_RDONLY);
+    if (fd < 0) {
+        std::cerr << "[StreamReader] Gagal membuka FIFO: " << strerror(errno) << std::endl;
+        return;
+    }
+#endif
     
     std::cout << "[StreamReader] Proxy terhubung! Memulai stream..." << std::endl;
 
     while (is_running_) {
-        DWORD bytesRead;
         uint32_t size = 0;
         
-        // Baca ukuran (4 bytes)
+#ifdef _WIN32
+        DWORD bytesRead;
         if (!ReadFile(hPipe, &size, 4, &bytesRead, NULL) || bytesRead != 4) {
             std::cerr << "[StreamReader] Gagal membaca ukuran frame dari Pipe" << std::endl;
             break;
         }
+#else
+        ssize_t bytesRead = read(fd, &size, 4);
+        if (bytesRead <= 0) break;
+#endif
 
         if (size == 0 || size > 1024 * 1024 * 10) {
             std::cerr << "[StreamReader] Ukuran frame tidak valid: " << size << std::endl;
             break;
         }
         
-        // Baca data JPG
         std::vector<uchar> buf(size);
-        DWORD totalRead = 0;
+        uint32_t totalRead = 0;
         while (totalRead < size) {
+#ifdef _WIN32
             DWORD chunkRead = 0;
             if (!ReadFile(hPipe, buf.data() + totalRead, size - totalRead, &chunkRead, NULL) || chunkRead == 0) {
                 break;
             }
+#else
+            ssize_t chunkRead = read(fd, buf.data() + totalRead, size - totalRead);
+            if (chunkRead <= 0) break;
+#endif
             totalRead += chunkRead;
         }
 
         if (totalRead != size) {
-            std::cerr << "[StreamReader] Gagal membaca seluruh data JPG dari Pipe" << std::endl;
+            std::cerr << "[StreamReader] Gagal membaca seluruh data JPG" << std::endl;
             break;
         }
         
-        // Decode frame
         cv::Mat frame = cv::imdecode(buf, cv::IMREAD_COLOR);
         if (frame.empty()) {
             std::cerr << "[StreamReader] Gagal mendecode JPG!" << std::endl;
@@ -124,6 +158,11 @@ void StreamReader::captureLoop() {
         }
     }
     
+#ifdef _WIN32
     CloseHandle(hPipe);
+#else
+    close(fd);
+    unlink(pipe_name.c_str());
+#endif
     std::cout << "[StreamReader] Capture loop stopped." << std::endl;
 }

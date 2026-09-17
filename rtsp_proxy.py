@@ -25,11 +25,14 @@ if not cap.isOpened():
 print(f"[Python Proxy] RTSP Terbuka. Menunggu C++ connect ke Named Pipe ({camera_id})...")
 
 try:
-    # Buka named pipe yang dibuat oleh C++ (pipe harus sudah dibuat oleh C++ duluan)
-    # Gunakan buffering=0 agar tidak ada antrean buffer yang nyangkut di memori
-    pipe_name = r'\\.\pipe\rtsp_pipe_' + camera_id
-    pipe = open(pipe_name, 'wb', buffering=0)
-    print(f"[Python Proxy] Terhubung ke Named Pipe {pipe_name}!")
+    if os.name == 'nt':
+        pipe_name = r'\\.\pipe\rtsp_pipe_' + camera_id
+        pipe = open(pipe_name, 'wb', buffering=0)
+    else:
+        pipe_name = '/tmp/rtsp_pipe_' + camera_id
+        pipe = open(pipe_name, 'wb', buffering=0)
+    
+    print(f"[Python Proxy] Terhubung ke Pipe {pipe_name}!")
     
     while True:
         ret, frame = cap.read()
@@ -40,19 +43,14 @@ try:
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             continue
             
-        # Encode ke JPG untuk menghemat bandwidth pipe (kualitas 70 agar lebih cepat)
         ret, buf = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         if not ret:
             continue
             
-        # Kirim ukuran buffer (4 bytes integer) lalu data JPG-nya
         size = len(buf)
         pipe.write(struct.pack('<I', size))
         pipe.write(buf.tobytes())
         pipe.flush()
-        
-        # HAPUS time.sleep(0.01) di sini! cap.read() sudah blocking sesuai FPS asli kamera.
-        # Adanya sleep sebelumnya membuat Windows menambah delay ~15ms ekstra per frame.
 
 except OSError as e:
     # Matikan pesan error Errno 22/32 karena itu wajar saat C++ mematikan pipe (close)

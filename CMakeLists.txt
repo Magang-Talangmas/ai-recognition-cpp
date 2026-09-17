@@ -11,9 +11,18 @@ option(USE_GPU "Enable NVIDIA GPU (CUDA) support" ON)
 
 if(USE_GPU)
     message(STATUS "MIGRASI GPU DIAKTIFKAN! Menggunakan prebuilt ONNX Runtime GPU...")
-    # Arahkan CMake ke folder onnxruntime-gpu hasil download
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime-gpu/include)
-    link_directories(${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime-gpu/lib)
+    if(UNIX)
+        include(FetchContent)
+        FetchContent_Declare(onnxruntime_gpu
+            URL https://github.com/microsoft/onnxruntime/releases/download/v1.16.0/onnxruntime-linux-x64-gpu-1.16.0.tgz
+        )
+        FetchContent_MakeAvailable(onnxruntime_gpu)
+        include_directories(${onnxruntime_gpu_SOURCE_DIR}/include)
+        link_directories(${onnxruntime_gpu_SOURCE_DIR}/lib)
+    else()
+        include_directories(${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime-gpu/include)
+        link_directories(${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime-gpu/lib)
+    endif()
     add_compile_definitions(USE_GPU)
 else()
     message(STATUS "Berjalan di mode CPU.")

@@ -51,11 +51,21 @@ jobs:
             git fetch origin gpu-migration
             git reset --hard origin/gpu-migration
             
-            echo "[3/3] Install Dependencies & Restart PM2..."
+            echo "[3/3] Build C++, Install Dependencies & Restart PM2..."
             export PATH=$PATH:~/.local/bin
-            pip install -r requirements.txt --break-system-packages
+            
+            # Setup Virtual Environment (.venv) for Python
+            python3 -m venv .venv
+            source .venv/bin/activate
+            pip install -r requirements.txt
+            
+            # Build C++ (Linux Binary)
+            cmake -B build -S .
+            cmake --build build --config Release -j$(nproc)
+            
+            # Run PM2
             pm2 restart ecosystem.config.js || pm2 start ecosystem.config.js
-            pm2 save
+            pm2 save`n            sleep 3`n            if pm2 list | grep -q `"errored`"; then`n              echo `"PM2 gagal! Melakukan rollback ke Docker...`"`n              pm2 delete all`n              docker compose up -d`n              exit 1`n            fi
             
             echo "DEPLOY SUKSES: ai-detection sudah ter-update!"
 
@@ -72,7 +82,7 @@ jobs:
             
             echo "[3/3] Restart PM2 ai-stream-publisher..."
             pm2 restart ai-stream-publisher || pm2 start "python3 publisher.py" --name ai-stream-publisher
-            pm2 save
+            pm2 save`n            sleep 3`n            if pm2 list | grep -q `"errored`"; then`n              echo `"PM2 gagal! Melakukan rollback ke Docker...`"`n              pm2 delete all`n              docker compose up -d`n              exit 1`n            fi
             
             echo "DEPLOY SUKSES: ai-stream-publisher sudah ter-update!"
 
