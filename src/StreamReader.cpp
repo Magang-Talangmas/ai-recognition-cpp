@@ -84,15 +84,19 @@ void StreamReader::captureLoop() {
         return;
     }
 #else
-    std::string cmd = "python3 rtsp_proxy.py \"" + rtsp_url_ + "\" " + camera_id_ + " &";
-    if (system(cmd.c_str()) != 0) {
-        std::cerr << "[StreamReader] Gagal menjalankan rtsp_proxy.py" << std::endl;
-    }
-
     std::string pipe_name = "/tmp/rtsp_pipe_" + camera_id_;
     unlink(pipe_name.c_str());
     if (mkfifo(pipe_name.c_str(), 0666) == -1) {
         std::cerr << "[StreamReader] Gagal membuat mkfifo: " << strerror(errno) << std::endl;
+        return;
+    }
+
+    const char* configured_python = std::getenv("PYTHON_EXECUTABLE");
+    std::string python = configured_python ? configured_python : "./.venv/bin/python";
+    std::string cmd = python + " rtsp_proxy.py \"" + rtsp_url_ + "\" " + camera_id_ + " &";
+    if (system(cmd.c_str()) != 0) {
+        std::cerr << "[StreamReader] Gagal menjalankan rtsp_proxy.py" << std::endl;
+        unlink(pipe_name.c_str());
         return;
     }
 

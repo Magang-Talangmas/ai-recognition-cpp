@@ -27,6 +27,7 @@ jobs:
         run: python -m compileall -q -x '(venv|\\.venv|__pycache__)' .
 
       - name: Validate Docker Compose
+        if: ${{ hashFiles('docker-compose.yml') != '' && hashFiles('.env.example') != '' }}
         run: |
           cp .env.example .env
           docker compose config -q

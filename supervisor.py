@@ -4,10 +4,7 @@ import subprocess
 import os
 from dotenv import load_dotenv
 
-# Load kredensial dari .env
 load_dotenv()
-API_USER = os.getenv("RTSP_USER", "admin")
-API_PASS = os.getenv("RTSP_PASS", "bismillah123")
 
 # Konfigurasi MediaMTX API
 MEDIAMTX_API_URL = os.getenv("MEDIAMTX_API_URL", "http://127.0.0.1:9997/v3/paths/list")
@@ -23,9 +20,8 @@ else:
 active_cameras = {}
 
 def get_active_paths():
-    """Mengambil daftar kamera aktif dari MediaMTX API dengan Authentication."""
+    """Mengambil daftar path kamera yang dikenal MediaMTX."""
     try:
-        # Coba akses tanpa password sesuai kata Tim Device 1
         response = requests.get(MEDIAMTX_API_URL, timeout=3)
         
         if response.status_code == 200:
@@ -49,7 +45,8 @@ def run_supervisor():
     print("  AI Supervisor (Auto-Discovery Camera) AKTIF!   ")
     print("=================================================")
     print(f"Target API: {MEDIAMTX_API_URL}")
-    print(f"Login API: User='{API_USER}', Password='{API_PASS}'")
+    if not os.path.isfile(CPP_EXECUTABLE) or not os.access(CPP_EXECUTABLE, os.X_OK):
+        raise SystemExit(f"[Supervisor] Binary tidak siap: {CPP_EXECUTABLE}")
     print("Menunggu kamera nyala...\n")
 
     try:

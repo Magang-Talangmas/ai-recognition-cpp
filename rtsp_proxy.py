@@ -1,13 +1,17 @@
 import cv2
+import os
 import struct
 import time
 import sys
 
-# Ambil URL dari argumen pertama, kalau tidak ada pakai fallback
-rtsp_url = sys.argv[1] if len(sys.argv) > 1 else "rtsp://192.168.77.171:8554/stream"
+# Ambil URL dari argumen pertama atau environment; jangan simpan alamat server lama di source.
+rtsp_url = sys.argv[1] if len(sys.argv) > 1 else os.getenv("RTSP_URL", "")
 camera_id = sys.argv[2] if len(sys.argv) > 2 else "cam_01"
 
-import os
+if not rtsp_url:
+    print("[Python Proxy] URL RTSP wajib diberikan.")
+    sys.exit(2)
+
 # Paksa FFmpeg (backend OpenCV) agar TIDAK melakukan buffering/antrean frame (Zero Latency Hack)
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay"
 

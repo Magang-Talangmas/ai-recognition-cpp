@@ -51,21 +51,41 @@ jobs:
             git fetch origin gpu-migration
             git reset --hard origin/gpu-migration
             
-            echo "[3/3] Build C++, Install Dependencies & Restart PM2..."
+            echo "[3/3] Build C++, siapkan virtualenv, lalu handover ke PM2..."
             export PATH=$PATH:~/.local/bin
-            
-            # Setup Virtual Environment (.venv) for Python
+
+            rollback() {
+              echo "PM2 detection gagal. Mengembalikan container detection lama..."
+              pm2 delete ai-detection-api || true
+              pm2 delete ai-detection-supervisor || true
+              docker start projek-anakmagang-ai-detection || true
+              curl -fsS --max-time 10 http://127.0.0.1:8000/health || true
+              exit 1
+            }
+
+            # Semua persiapan dilakukan saat container lama masih melayani port 8000.
             python3 -m venv .venv
-            source .venv/bin/activate
-            pip install -r requirements.txt
+            .venv/bin/python -m pip install --upgrade pip
+            .venv/bin/python -m pip install -r requirements.txt
             
-            # Build C++ (Linux Binary)
+            # Bila dependency C++ belum lengkap, gagal di sini tanpa mengganggu Docker lama.
             cmake -B build -S .
             cmake --build build --config Release -j$(nproc)
-            
-            # Run PM2
-            pm2 restart ecosystem.config.js || pm2 start ecosystem.config.js
-            pm2 save`n            sleep 3`n            if pm2 list | grep -q `"errored`"; then`n              echo `"PM2 gagal! Melakukan rollback ke Docker...`"`n              pm2 delete all`n              docker compose up -d`n              exit 1`n            fi
+
+            test -x build/face_preprocessor || {
+              echo "Binary Linux build/face_preprocessor tidak ditemukan."
+              exit 1
+            }
+
+            # Handover hanya dilakukan setelah build sukses.
+            docker stop projek-anakmagang-ai-detection || rollback
+            pm2 startOrReload ecosystem.config.js --update-env || rollback
+            sleep 3
+
+            curl -fsS --max-time 10 http://127.0.0.1:8000/health || rollback
+            pm2 describe ai-detection-api | grep -q 'status.*online' || rollback
+            pm2 describe ai-detection-supervisor | grep -q 'status.*online' || rollback
+            pm2 save
             
             echo "DEPLOY SUKSES: ai-detection sudah ter-update!"
 
@@ -80,11 +100,7 @@ jobs:
             git fetch origin stream
             git reset --hard origin/stream
             
-            echo "[3/3] Restart PM2 ai-stream-publisher..."
-            pm2 restart ai-stream-publisher || pm2 start "python3 publisher.py" --name ai-stream-publisher
-            pm2 save`n            sleep 3`n            if pm2 list | grep -q `"errored`"; then`n              echo `"PM2 gagal! Melakukan rollback ke Docker...`"`n              pm2 delete all`n              docker compose up -d`n              exit 1`n            fi
-            
-            echo "DEPLOY SUKSES: ai-stream-publisher sudah ter-update!"
+            echo "Stream dikelola oleh workflow CI/CD khusus stream. Tidak ada aksi dari workflow ini."
 
           else
             echo "Branch ${{ github.ref_name }} tidak memiliki konfigurasi auto-deploy."
