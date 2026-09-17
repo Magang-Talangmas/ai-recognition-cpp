@@ -63,9 +63,10 @@ DRY_RUN = os.getenv("DRY_RUN", "False").lower() in ("true", "1", "yes")
 # ==================== SCHEDULE LOGIC ====================
 employee_schedules = {}
 default_schedules = {}
+employee_names = {}
 
 def load_schedules():
-    global employee_schedules, default_schedules
+    global employee_schedules, default_schedules, employee_names
     if not DATABASE_URL:
         print("Warning: DATABASE_URL tidak ditemukan, jadwal default akan digunakan.")
         return
@@ -91,11 +92,12 @@ def load_schedules():
                     default_schedules[day] = schedule_map[sched_id]
                     
         # Load employees
-        cur.execute('SELECT "employeeId", "scheduleId" FROM employees WHERE status = \'Active\'')
+        cur.execute('SELECT "employeeId", "scheduleId", name FROM employees WHERE status = \'Active\'')
         employees = cur.fetchall()
         
         for row in employees:
-            emp_id, sched_id = row
+            emp_id, sched_id, name = row
+            employee_names[emp_id] = name or emp_id
             if sched_id and sched_id in schedule_map:
                 employee_schedules[emp_id] = schedule_map[sched_id]
                 
@@ -107,6 +109,10 @@ def load_schedules():
 
 load_schedules()
 # ========================================================
+
+def employee_label(employee_id):
+    """Format yang mudah dibaca untuk log tanpa mengubah ID yang dikirim ke backend."""
+    return f"{employee_names.get(employee_id, 'Karyawan tidak diketahui')} ({employee_id})"
 
 # Cache untuk mencegah pengiriman spam ke database dalam interval pendek
 last_event_status_cache = {}
@@ -293,20 +299,21 @@ def process_worker(camera_id, face_img):
             return
             
         if employee_id:
+            display_name = employee_label(employee_id)
             # Tentukan eventType berdasarkan waktu
             event_type = get_event_type(employee_id)
             
             # Abaikan jika di luar jam absensi
             if not event_type:
-                print(f"[{camera_id}] Dikenali sebagai {employee_id}, tapi ditolak karena di luar jam absen.")
+                print(f"[{camera_id}] Dikenali sebagai {display_name}, tapi ditolak karena di luar jam absen.")
                 return
                 
             # Rate limiter / cooldown
             if not is_action_allowed_by_cooldown(employee_id, event_type):
-                print(f"[{camera_id}] Dikenali sebagai {employee_id} (Cooldown aktif)")
+                print(f"[{camera_id}] Dikenali sebagai {display_name} (Cooldown aktif)")
                 return
                 
-            print(f"[{camera_id}] Memproses: {employee_id} ({event_type})")
+            print(f"[{camera_id}] Memproses: {display_name} ({event_type})")
             
             # Pre-emptively update cache
             cache_key = f"{employee_id}_{event_type}"
@@ -314,7 +321,7 @@ def process_worker(camera_id, face_img):
             
             # --- DRY_RUN: Hanya log, jangan kirim ke Supabase atau Backend ---
             if DRY_RUN:
-                print(f"🧪 [DRY_RUN] Embedding Fusion match berhasil! Employee: {employee_id}, Score: {confidence:.4f}, Event: {event_type}")
+                print(f"🧪 [DRY_RUN] Embedding Fusion match berhasil! Employee: {display_name}, Score: {confidence:.4f}, Event: {event_type}")
                 print(f"🧪 [DRY_RUN] Data TIDAK dikirim ke Supabase/Backend (mode testing aktif).")
                 return
             # -----------------------------------------------------------------
