@@ -20,9 +20,11 @@ from anti_spoof import check_liveness
 
 load_dotenv()
 
-# Kamus boolean per-kamera: True = sedang memproses 1 frame.
-# Jika sudah True, frame baru langsung dibuang (latest-wins, no queue).
+# Satu kamera hanya menjalankan satu inference pada satu waktu.
+# Event tambahan dibuang agar tidak membentuk antrean tak terbatas.
 _camera_busy: dict[str, bool] = {}
+_camera_last_started: dict[str, float] = {}
+_recent_face_matches: dict[str, list[tuple[float, bytes]]] = {}
 _camera_lock = threading.Lock()
 
 # --- MinIO Storage Konfigurasi (Lokal / On-Premise) ---
@@ -59,6 +61,15 @@ EMBEDDINGS_FILE = os.path.join(DATA_DIR, "embeddings.npy")
 LABELS_FILE = os.path.join(DATA_DIR, "labels.json")
 SIMILARITY_THRESHOLD = 0.308 # Calibrated using held-out test data (Panji & Septada)
 DRY_RUN = os.getenv("DRY_RUN", "False").lower() in ("true", "1", "yes")
+# Batasi embedding Fusion per stream. Bbox tetap diproduksi oleh Detection GPU.
+RECOGNITION_MAX_FPS = max(0.1, float(os.getenv("RECOGNITION_MAX_FPS", "3")))
+RECOGNITION_SAME_FACE_COOLDOWN_SECONDS = max(
+    0.0, float(os.getenv("RECOGNITION_SAME_FACE_COOLDOWN_SECONDS", "5"))
+)
+# 16x16 average hash; ambang kecil agar hanya crop wajah yang hampir sama yang dilewati.
+RECOGNITION_FACE_HASH_MAX_DISTANCE = max(
+    0, int(os.getenv("RECOGNITION_FACE_HASH_MAX_DISTANCE", "12"))
+)
 
 # ==================== SCHEDULE LOGIC ====================
 employee_schedules = {}
@@ -146,6 +157,62 @@ print(f"Berhasil memuat {len(enrolled_labels)} wajah terdaftar.")
 
 def cosine_similarity(emb1, emb2):
     return np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
+
+
+def face_fingerprint(face_img):
+    """Fingerprint murah untuk mengenali crop wajah yang hampir sama tanpa inference."""
+    gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
+    small = cv2.resize(gray, (16, 16), interpolation=cv2.INTER_AREA)
+    return np.packbits(small >= small.mean()).tobytes()
+
+
+def hash_distance(first, second):
+    return sum((left ^ right).bit_count() for left, right in zip(first, second))
+
+
+def is_same_recent_face(camera_id, fingerprint):
+    if RECOGNITION_SAME_FACE_COOLDOWN_SECONDS == 0:
+        return False
+
+    now = time.monotonic()
+    with _camera_lock:
+        recent = [
+            entry for entry in _recent_face_matches.get(camera_id, [])
+            if now - entry[0] < RECOGNITION_SAME_FACE_COOLDOWN_SECONDS
+        ]
+        _recent_face_matches[camera_id] = recent
+        return any(
+            hash_distance(fingerprint, previous_fingerprint) <= RECOGNITION_FACE_HASH_MAX_DISTANCE
+            for _, previous_fingerprint in recent
+        )
+
+
+def remember_recent_face(camera_id, fingerprint):
+    if RECOGNITION_SAME_FACE_COOLDOWN_SECONDS == 0:
+        return
+
+    now = time.monotonic()
+    with _camera_lock:
+        recent = [
+            entry for entry in _recent_face_matches.get(camera_id, [])
+            if now - entry[0] < RECOGNITION_SAME_FACE_COOLDOWN_SECONDS
+        ]
+        recent.append((now, fingerprint))
+        _recent_face_matches[camera_id] = recent[-20:]
+
+
+def try_reserve_camera_slot(camera_id):
+    """Terima paling banyak RECOGNITION_MAX_FPS inference per kamera."""
+    now = time.monotonic()
+    minimum_interval = 1.0 / RECOGNITION_MAX_FPS
+    with _camera_lock:
+        if _camera_busy.get(camera_id, False):
+            return False
+        if now - _camera_last_started.get(camera_id, 0.0) < minimum_interval:
+            return False
+        _camera_busy[camera_id] = True
+        _camera_last_started[camera_id] = now
+        return True
 
 def recognize_face(face_img):
     # --- Langsung ke Recognition (Skip Double Detection) ---
@@ -278,7 +345,7 @@ def send_to_backend(employee_id, camera_id, confidence, thumbnail_url, event_typ
     except Exception as e:
         print(f"[API Error] Gagal mengirim event ke backend: {e}")
 
-def process_worker(camera_id, face_img):
+def process_worker(camera_id, face_img, fingerprint):
     try:
         # Lakukan recognition
         print(f"[{camera_id}] Menerima wajah, memproses AI...")
@@ -299,6 +366,9 @@ def process_worker(camera_id, face_img):
             return
             
         if employee_id:
+            # Setelah identitas diketahui, simpan fingerprint supaya crop orang yang
+            # sama tidak dihitung ulang selama cooldown pendek.
+            remember_recent_face(camera_id, fingerprint)
             display_name = employee_label(employee_id)
             # Tentukan eventType berdasarkan waktu
             event_type = get_event_type(employee_id)
@@ -394,14 +464,15 @@ def start_stream_listener():
                             print("Gagal mendecode gambar wajah dari stream")
                             continue
                     
-                    with _camera_lock:
-                        if _camera_busy.get(camera_id, False):
-                            continue
-                        _camera_busy[camera_id] = True
+                    fingerprint = face_fingerprint(face_img)
+                    if is_same_recent_face(camera_id, fingerprint):
+                        continue
+                    if not try_reserve_camera_slot(camera_id):
+                        continue
 
                     threading.Thread(
                         target=process_worker,
-                        args=(camera_id, face_img),
+                        args=(camera_id, face_img, fingerprint),
                         daemon=True,
                     ).start()
                         
