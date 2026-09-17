@@ -51,8 +51,11 @@ jobs:
             git fetch origin gpu-migration
             git reset --hard origin/gpu-migration
             
-            echo "[3/3] Rebuild & Restart Docker Container (FastAPI Port 8000)..."
-            docker compose up -d --build
+            echo "[3/3] Install Dependencies & Restart PM2..."
+            export PATH=$PATH:~/.local/bin
+            pip install -r requirements.txt --break-system-packages
+            pm2 restart ecosystem.config.js || pm2 start ecosystem.config.js
+            pm2 save
             
             echo "DEPLOY SUKSES: ai-detection sudah ter-update!"
 

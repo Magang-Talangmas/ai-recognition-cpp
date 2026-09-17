@@ -160,3 +160,22 @@ ai-recognition-cpp/
 ```
 
 **Dikembangkan oleh Tim Developer Antigravity untuk Talangmas.**
+
+---
+
+## Deployment Server Produksi (Bare-Metal PM2)
+
+Repositori ini telah dimigrasi dari Docker menuju Bare-Metal PM2 untuk mematuhi kebijakan infrastruktur terbaru di OS Linux (Pop!_OS).
+
+### Langkah Instalasi:
+1. Tarik repository terbaru (branch gpu-migration)
+2. Install dependency Python di level sistem:
+   ``bash
+   pip install -r requirements.txt --break-system-packages
+   ``
+3. Jalankan aplikasi menggunakan PM2 (Supervisor & API Server otomatis menyala):
+   ``bash
+   pm2 start ecosystem.config.js
+   pm2 save
+   ``
+

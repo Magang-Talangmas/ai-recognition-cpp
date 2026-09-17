@@ -1,8 +1,0 @@
-services:
-  ai-detection:
-    build: .
-    container_name: projek-anakmagang-ai-detection
-    restart: unless-stopped
-    network_mode: host
-    env_file:
-      - .env
