@@ -57,6 +57,8 @@ def redis_listener():
                 "face_index":        data.get("face_index", 0),
                 "confidence_score":  data.get("confidence_score"),
                 "bounding_box":      data.get("bounding_box"),
+                "frame_width":       data.get("frame_width"),
+                "frame_height":      data.get("frame_height"),
                 "face_image_base64": data.get("face_image_base64"),
             }
             with lock:
@@ -74,6 +76,8 @@ def redis_listener():
                     "camera_id": cam_id,
                     "timestamp_ms": entry.get("timestamp_ms"),
                     "bounding_box": entry.get("bounding_box"),
+                    "frame_width": entry.get("frame_width"),
+                    "frame_height": entry.get("frame_height"),
                     "name": "Unknown" # Sesuai kesepakatan, kita belum tau namanya
                 }
                 for q in list(bbox_subscribers):
@@ -272,6 +276,8 @@ async def stream_live_bbox(request: Request):
                             grouped_data[cam] = {
                                 "camera_id": cam,
                                 "timestamp_ms": item["timestamp_ms"],
+                                "frame_width": item.get("frame_width"),
+                                "frame_height": item.get("frame_height"),
                                 "bounding_boxes": []
                             }
                         if item.get("bounding_box"):

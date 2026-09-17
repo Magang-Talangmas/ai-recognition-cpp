@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
             
             if (!last_faces.empty()) {
                 std::cout << "[Inference Thread] Detected & preprocessed " << last_faces.size() << " valid face(s)." << std::endl;
-                publisher.publish(last_faces);
+                publisher.publish(last_faces, frame.size());
             }
         }
 

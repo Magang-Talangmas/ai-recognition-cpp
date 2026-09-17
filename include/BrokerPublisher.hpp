@@ -22,7 +22,7 @@ public:
      * 
      * @param faces List of preprocessed faces
      */
-    void publish(const std::vector<PreprocessedFace>& faces);
+    void publish(const std::vector<PreprocessedFace>& faces, const cv::Size& frame_size);
 
     /**
      * @brief Encode and publish the full video frame for MJPEG stream

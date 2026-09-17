@@ -78,7 +78,7 @@ std::string BrokerPublisher::encodeBase64(const cv::Mat& image) {
     return base64_encode(buf.data(), buf.size());
 }
 
-void BrokerPublisher::publish(const std::vector<PreprocessedFace>& faces) {
+void BrokerPublisher::publish(const std::vector<PreprocessedFace>& faces, const cv::Size& frame_size) {
     if (faces.empty()) return;
 
     // Get current timestamp in ms
@@ -87,13 +87,15 @@ void BrokerPublisher::publish(const std::vector<PreprocessedFace>& faces) {
     
     std::vector<PreprocessedFace> faces_copy = faces;
     
-    std::async(std::launch::async, [this, faces_copy, ms]() {
+    std::async(std::launch::async, [this, faces_copy, ms, frame_size]() {
         int face_idx = 0;
         for (const auto& face : faces_copy) {
             json j;
             j["camera_id"] = camera_id_;
             j["timestamp_ms"] = ms;
             j["face_index"] = face_idx++;
+            j["frame_width"] = frame_size.width;
+            j["frame_height"] = frame_size.height;
             j["bounding_box"] = {
                 {"x", face.bounding_box.x},
                 {"y", face.bounding_box.y},
