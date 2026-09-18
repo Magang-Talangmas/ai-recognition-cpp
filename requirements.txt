@@ -3,3 +3,4 @@ numpy
 python-dotenv
 fastapi>=0.115.0
 uvicorn>=0.30.0
+redis>=5.0.1
