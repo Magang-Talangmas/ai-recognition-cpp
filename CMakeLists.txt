@@ -7,8 +7,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Find OpenCV
 find_package(OpenCV REQUIRED)
 
-# Find ONNX Runtime (installed via vcpkg)
-find_package(onnxruntime CONFIG REQUIRED)
+option(USE_GPU "Enable NVIDIA GPU (CUDA) support" ON)
+
+if(USE_GPU)
+    message(STATUS "MIGRASI GPU DIAKTIFKAN! Menggunakan prebuilt ONNX Runtime GPU...")
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime-gpu/include)
+    link_directories(${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime-gpu/lib)
+    add_compile_definitions(USE_GPU)
+else()
+    message(STATUS "Berjalan di mode CPU.")
+    find_package(onnxruntime CONFIG REQUIRED)
+endif()
 
 # Threading
 find_package(Threads REQUIRED)
@@ -42,11 +51,23 @@ add_executable(face_preprocessor
     src/BrokerPublisher.cpp
 )
 
-target_link_libraries(face_preprocessor PRIVATE
-    ${OpenCV_LIBS}
-    ${REDIS_PLUS_PLUS_LIBRARIES}
-    ${HIREDIS_LIBRARIES}
-    nlohmann_json::nlohmann_json
-    Threads::Threads
-    onnxruntime::onnxruntime
-)
+if(USE_GPU)
+    target_link_libraries(face_preprocessor PRIVATE
+        ${OpenCV_LIBS}
+        ${REDIS_PLUS_PLUS_LIBRARIES}
+        ${HIREDIS_LIBRARIES}
+        nlohmann_json::nlohmann_json
+        Threads::Threads
+        onnxruntime
+        onnxruntime_providers_cuda
+    )
+else()
+    target_link_libraries(face_preprocessor PRIVATE
+        ${OpenCV_LIBS}
+        ${REDIS_PLUS_PLUS_LIBRARIES}
+        ${HIREDIS_LIBRARIES}
+        nlohmann_json::nlohmann_json
+        Threads::Threads
+        onnxruntime::onnxruntime
+    )
+endif()
