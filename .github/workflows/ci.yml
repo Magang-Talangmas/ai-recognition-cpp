@@ -58,3 +58,46 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release -j2
           test -x build/face_preprocessor
+
+  deploy-detection:
+    name: Deploy GPU detection to Pop!_OS
+    needs: build-detection
+    if: github.event_name == 'push' && github.ref == 'refs/heads/gpu-migration'
+    runs-on: [self-hosted, Linux, X64, ai-ml]
+    concurrency:
+      group: ai-detection-deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy validated GPU detection build
+        run: |
+          set -e
+          export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/home/popos/.local/bin
+          cd /home/popos/projek-anakmagang/ai-detection
+          git fetch origin gpu-migration
+          git reset --hard origin/gpu-migration
+
+          rollback() {
+            echo "PM2 detection gagal. Mengembalikan container detection lama..."
+            pm2 delete ai-detection-api || true
+            pm2 delete ai-detection-supervisor || true
+            docker start projek-anakmagang-ai-detection || true
+            curl -fsS --max-time 10 http://127.0.0.1:8000/health || true
+            exit 1
+          }
+
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release -j$(nproc)
+          test -x build/face_preprocessor
+
+          docker stop projek-anakmagang-ai-detection || rollback
+          pm2 startOrReload ecosystem.config.js --update-env || rollback
+          sleep 3
+
+          curl -fsS --max-time 10 http://127.0.0.1:8000/health || rollback
+          pm2 describe ai-detection-api | grep -q 'status.*online' || rollback
+          pm2 describe ai-detection-supervisor | grep -q 'status.*online' || rollback
+          pm2 save
