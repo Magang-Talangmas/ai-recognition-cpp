@@ -9,6 +9,10 @@ on:
       - stream
   workflow_dispatch:
 
+concurrency:
+  group: ai-engine-deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to Pop!_OS Server

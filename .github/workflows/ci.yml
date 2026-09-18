@@ -39,3 +39,22 @@ jobs:
       - name: Resolve Python dependencies
         if: ${{ hashFiles('Dockerfile') == '' }}
         run: python -m pip install --dry-run -r requirements.txt
+
+  build-detection:
+    name: Build C++ detection on AI runner
+    needs: validate
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/gpu-migration') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'gpu-migration')
+    runs-on: [self-hosted, Linux, X64, ai-ml]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure and build face preprocessor
+        run: |
+          set -e
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release -j2
+          test -x build/face_preprocessor
