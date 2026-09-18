@@ -140,7 +140,7 @@ int main(int argc, char** argv) {
                 
                 if (!faces.empty()) {
                     std::cout << "[Inference Thread] Detected & preprocessed " << faces.size() << " valid face(s)." << std::endl;
-                    publisher.publish(faces);
+                    publisher.publish(faces, frame_to_process.size());
                 }
             } else {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
