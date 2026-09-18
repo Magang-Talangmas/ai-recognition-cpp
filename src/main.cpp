@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
     std::cout << "Redis Channel  : " << redis_channel << std::endl;
 
     // Initialize modules
-    StreamReader reader(rtsp_url);
+    StreamReader reader(redis_url, camera_id);
     FacePreprocessor preprocessor(scrfd_model_path);
     BrokerPublisher publisher(redis_url, redis_channel, camera_id);
 

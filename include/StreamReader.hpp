@@ -6,24 +6,26 @@
 #include <mutex>
 #include <atomic>
 #include <optional>
+#include <sw/redis++/redis++.h>
 
 class StreamReader {
 public:
     /**
      * @brief Construct a new Stream Reader object
      * 
-     * @param rtsp_url URL of the RTSP stream (e.g., MediaMTX)
+     * @param redis_url URL of the Redis server (e.g., tcp://127.0.0.1:6379)
+     * @param camera_id ID of the camera to subscribe to
      */
-    explicit StreamReader(const std::string& rtsp_url);
+    explicit StreamReader(const std::string& redis_url, const std::string& camera_id);
     ~StreamReader();
 
     /**
-     * @brief Starts the background thread for asynchronous frame capturing
+     * @brief Starts the background thread for asynchronous frame receiving
      */
     void start();
 
     /**
-     * @brief Stops the background thread and releases the stream
+     * @brief Stops the background thread and disconnects
      */
     void stop();
 
@@ -37,10 +39,11 @@ public:
 
 private:
     void captureLoop();
-    void reconnect();
+    void processMessage(const std::string& channel, const std::string& msg);
 
-    std::string rtsp_url_;
-    cv::VideoCapture capture_;
+    std::string redis_url_;
+    std::string camera_id_;
+    std::string channel_name_;
     
     std::atomic<bool> is_running_;
     std::thread capture_thread_;
