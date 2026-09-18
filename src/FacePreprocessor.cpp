@@ -19,6 +19,12 @@ FacePreprocessor::FacePreprocessor(const std::string& scrfd_model_path) {
     const char* model_path_ptr = scrfd_model_path.c_str();
 #endif
 
+#ifdef USE_GPU
+    OrtCUDAProviderOptions cuda_options;
+    cuda_options.device_id = 0;
+    session_options_.AppendExecutionProvider_CUDA(cuda_options);
+#endif
+
     try {
         // Load model .onnx ke memori
         session_ = std::make_unique<Ort::Session>(env_, model_path_ptr, session_options_);
