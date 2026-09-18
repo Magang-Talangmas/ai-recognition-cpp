@@ -96,7 +96,10 @@ if(USE_GPU)
         ${REDIS_PLUS_PLUS_LIBRARIES}
         ${HIREDIS_LIBRARIES}
         nlohmann_json::nlohmann_json
+
         httplib
+
+
         Threads::Threads
         onnxruntime
         onnxruntime_providers_cuda
@@ -107,7 +110,10 @@ else()
         ${REDIS_PLUS_PLUS_LIBRARIES}
         ${HIREDIS_LIBRARIES}
         nlohmann_json::nlohmann_json
+
         httplib
+
+
         Threads::Threads
         onnxruntime::onnxruntime
     )
