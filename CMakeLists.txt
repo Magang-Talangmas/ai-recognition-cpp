@@ -14,7 +14,8 @@ if(USE_GPU)
     if(UNIX)
         include(FetchContent)
         FetchContent_Declare(onnxruntime_gpu
-            URL https://github.com/microsoft/onnxruntime/releases/download/v1.16.1/onnxruntime-linux-x64-gpu-1.16.1.tgz
+            # ONNX Runtime 1.26 uses CUDA 12.8 and cuDNN 9 on Linux.
+            URL https://github.com/microsoft/onnxruntime/releases/download/v1.26.0/onnxruntime-linux-x64-gpu-1.26.0.tgz
             DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         )
         FetchContent_MakeAvailable(onnxruntime_gpu)

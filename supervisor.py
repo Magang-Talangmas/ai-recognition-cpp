@@ -52,6 +52,18 @@ def run_supervisor():
     try:
         while True:
             current_paths = get_active_paths()
+
+            # Hapus child yang sudah berhenti agar kamera dapat dijalankan ulang.
+            # Tanpa pemeriksaan ini, supervisor tetap terlihat online di PM2
+            # meskipun face_preprocessor sudah crash.
+            for path_name, proc in list(active_cameras.items()):
+                exit_code = proc.poll()
+                if exit_code is not None:
+                    print(
+                        f"[Supervisor] Preprocessor {path_name} berhenti "
+                        f"dengan exit code {exit_code}; akan dicoba ulang."
+                    )
+                    del active_cameras[path_name]
             
             # 1. Cek apakah ada kamera BARU yang menyala
             for path_name in current_paths:
