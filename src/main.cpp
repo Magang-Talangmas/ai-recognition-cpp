@@ -70,10 +70,26 @@ int main(int argc, char** argv) {
     std::map<std::string, std::string> env = loadEnv(".env");
 
     // Configuration with fallback to default values if .env is missing
-    std::string rtsp_url = env.count("RTSP_URL") ? env["RTSP_URL"] : "rtsp://192.168.77.171:8554/stream";
     std::string redis_url = env.count("REDIS_URL") ? env["REDIS_URL"] : "tcp://127.0.0.1:6379";
     std::string redis_channel = env.count("REDIS_CHANNEL") ? env["REDIS_CHANNEL"] : "face_preprocessed_queue";
     std::string camera_id = env.count("CAMERA_ID") ? env["CAMERA_ID"] : "cam_01";
+
+    // Supervisor menjalankan satu binary untuk setiap path MediaMTX.
+    // Argumen ini harus mengalahkan nilai default di .env agar channel Redis
+    // sesuai dengan kamera yang sedang diproses.
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--cam" && i + 1 < argc) {
+            camera_id = argv[++i];
+        } else if (arg == "--redis" && i + 1 < argc) {
+            redis_channel = argv[++i];
+        }
+    }
+
+    bool show_window = false;
+#ifdef _WIN32
+    show_window = true;
+#endif
     
     // Model paths for ONNX
     std::string scrfd_model_path = "models/scrfd_2.5g_kps.onnx";
@@ -81,7 +97,7 @@ int main(int argc, char** argv) {
     std::cout << "=================================================" << std::endl;
     std::cout << "  Face Recognition Input Preprocessing Service   " << std::endl;
     std::cout << "=================================================" << std::endl;
-    std::cout << "RTSP URL       : " << rtsp_url << std::endl;
+    std::cout << "Camera ID      : " << camera_id << std::endl;
     std::cout << "Redis URL      : " << redis_url << std::endl;
     std::cout << "Redis Channel  : " << redis_channel << std::endl;
 
@@ -96,11 +112,13 @@ int main(int argc, char** argv) {
     std::vector<PreprocessedFace> latest_faces;
     std::atomic<bool> new_frame_for_inference(false);
 
-    // Start async reading from MediaMTX
+    // Start async reading from Redis.
     reader.start();
 
     const std::string WINDOW_NAME = "Talangmas AI Attendance - Live View";
-    cv::namedWindow(WINDOW_NAME, cv::WINDOW_NORMAL);
+    if (show_window) {
+        cv::namedWindow(WINDOW_NAME, cv::WINDOW_NORMAL);
+    }
 
     // Thread khusus untuk Inferensi AI agar tidak membuat video lag
     std::thread inference_thread([&]() {
@@ -180,7 +198,9 @@ int main(int argc, char** argv) {
                 drawDashedRectangle(display_frame, face.bounding_box, cv::Scalar(255, 255, 0), 1, 6);
             }
             
-            cv::imshow(WINDOW_NAME, display_frame);
+            if (show_window) {
+                cv::imshow(WINDOW_NAME, display_frame);
+            }
             
             // Limit publish video stream to ~15 FPS to save CPU and bandwidth
             auto now = std::chrono::steady_clock::now();
@@ -195,8 +215,8 @@ int main(int argc, char** argv) {
                 last_video_publish = now;
             }
             
-            // Tunggu 1 milidetik agar window OpenCV sempat merender gambar
-            if (cv::waitKey(1) == 'q') {
+            // Server Linux berjalan headless; input keyboard hanya dipakai di Windows.
+            if (show_window && cv::waitKey(1) == 'q') {
                 keep_running = false;
             }
             
