@@ -101,12 +101,14 @@ jobs:
           # proses tetap hidup sampai dihentikan timeout, sehingga CUDA EP,
           # model ONNX, Redis, dan library runtime berhasil diinisialisasi.
           set +e
-          timeout 10s build/face_preprocessor --cam __deployment_probe__ \
+          # Redis subscribe dapat menahan graceful shutdown; paksa mati lima
+          # detik setelah batas uji agar workflow tidak menggantung.
+          timeout --kill-after=5s 10s build/face_preprocessor --cam __deployment_probe__ \
             > /tmp/ai-detection-gpu-smoke.log 2>&1
           smoke_status=$?
           set -e
           cat /tmp/ai-detection-gpu-smoke.log
-          if [ "$smoke_status" -ne 124 ]; then
+          if [ "$smoke_status" -ne 124 ] && [ "$smoke_status" -ne 137 ]; then
             echo "GPU detection smoke test gagal dengan status $smoke_status."
             exit 1
           fi
