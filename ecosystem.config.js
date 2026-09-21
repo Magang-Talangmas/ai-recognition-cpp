@@ -22,9 +22,7 @@ module.exports = {
       min_uptime: '10s',
       max_restarts: 5,
       restart_delay: 2000,
-      // Model loading and enrollment synchronization temporarily exceed 1 GB.
-      // Keep a ceiling for genuine leaks without restarting a healthy GPU worker.
-      max_memory_restart: '2G',
+      max_memory_restart: '1G', // Prevent memory leaks
       error_file: "logs/worker-error.log",
       out_file: "logs/worker-out.log",
       time: true
