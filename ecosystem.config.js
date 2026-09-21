@@ -19,6 +19,9 @@ module.exports = {
       interpreter: "/home/popos/projek-anakmagang/ai-recognition/.venv/bin/python",
       autorestart: true,
       watch: false,
+      min_uptime: '10s',
+      max_restarts: 5,
+      restart_delay: 2000,
       max_memory_restart: '1G', // Prevent memory leaks
       error_file: "logs/worker-error.log",
       out_file: "logs/worker-out.log",
