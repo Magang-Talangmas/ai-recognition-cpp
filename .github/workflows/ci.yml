@@ -55,6 +55,7 @@ jobs:
       - name: Configure and build face preprocessor
         run: |
           set -e
+          cmake -E rm -rf build
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release -j2
           test -x build/face_preprocessor
@@ -89,6 +90,9 @@ jobs:
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python -m pip install -r requirements.txt
+          # FetchContent menyimpan ONNX Runtime di build/_deps. Bersihkan build
+          # supaya perubahan versi ORT tidak menautkan binary lama.
+          cmake -E rm -rf build
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release -j$(nproc)
           test -x build/face_preprocessor
