@@ -60,14 +60,7 @@ jobs:
             # recognition.py memuat model InsightFace saat startup dan akan berhenti
             # bila CUDAExecutionProvider tidak aktif. Beri waktu agar PM2 menangkap crash.
             sleep 10
-            pm2 jlist | python3 -c '
-import json, sys
-apps = {app["name"]: app["pm2_env"]["status"] for app in json.load(sys.stdin)}
-for name in ("ai-mobile-api", "ai-recognition-worker"):
-    if apps.get(name) != "online":
-        raise SystemExit(f"{name} tidak online setelah deployment: {apps.get(name)!r}")
-print("PM2 health check passed; recognition worker online.")
-'
+            pm2 jlist | python3 -c 'import json,sys; apps={a["name"]:a["pm2_env"]["status"] for a in json.load(sys.stdin)}; failed=[n for n in ("ai-mobile-api","ai-recognition-worker") if apps.get(n)!="online"]; print("PM2 health check:", apps); sys.exit("PM2 worker tidak online: "+", ".join(failed) if failed else 0)'
 
             pm2 save
             
