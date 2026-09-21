@@ -3,7 +3,6 @@ name: CD — Deploy AI Engine (Detection, Recognition & Stream)
 on:
   push:
     branches:
-      - feat/recognition-fusion
       - feat/recognition-face
       - gpu-migration
       - stream

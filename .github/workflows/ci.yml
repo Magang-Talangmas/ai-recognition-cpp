@@ -38,4 +38,46 @@ jobs:
 
       - name: Resolve Python dependencies
         if: ${{ hashFiles('Dockerfile') == '' }}
-        run: python -m pip install --dry-run -r requirements.txt
+        run: |
+          # GitHub-hosted runners have no CUDA runtime and their package index
+          # does not currently carry the server's ORT 1.26 wheel. CUDA itself is
+          # verified by the deploy job on the Pop!_OS runner.
+          grep -Eq '^onnxruntime-gpu==' requirements.txt
+          grep -v '^onnxruntime-gpu' requirements.txt > /tmp/requirements-ci.txt
+          python -m pip install --dry-run -r /tmp/requirements-ci.txt
+
+  deploy_fusion:
+    name: Deploy Fusion after validation
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feat/recognition-fusion'
+    runs-on: self-hosted
+    concurrency:
+      group: recognition-fusion-deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy validated commit to Pop!_OS
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          set -e
+          export PATH=$PATH:/usr/local/bin:/usr/bin:/bin
+          cd /home/popos/projek-anakmagang/ai-recognition
+
+          git fetch origin feat/recognition-fusion
+          git reset --hard "$DEPLOY_SHA"
+
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt
+
+          mkdir -p logs
+          if ! pm2 startOrReload ecosystem.config.js --update-env; then
+            echo 'PM2 gagal menjalankan Fusion.'
+            exit 1
+          fi
+
+          # recognition.py fails closed if InsightFace cannot start with CUDA.
+          sleep 20
+          pm2 jlist | python3 -c 'import json,sys; apps={a["name"]:a["pm2_env"]["status"] for a in json.load(sys.stdin)}; failed=[n for n in ("ai-mobile-api","ai-recognition-worker") if apps.get(n)!="online"]; print("PM2 health check:", apps); sys.exit("PM2 worker tidak online: "+", ".join(failed) if failed else 0)'
+          pm2 save
