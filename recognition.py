@@ -12,6 +12,7 @@ import psycopg2
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import insightface
+import onnxruntime as ort
 import io
 from insightface.app import FaceAnalysis
 from minio import Minio
@@ -128,9 +129,24 @@ def employee_label(employee_id):
 # Cache untuk mencegah pengiriman spam ke database dalam interval pendek
 last_event_status_cache = {}
 
-print("Memuat model InsightFace (buffalo_l)...")
-app = FaceAnalysis(name="buffalo_l")
+print("Memuat model InsightFace (buffalo_l) dengan CUDA...")
+if "CUDAExecutionProvider" not in ort.get_available_providers():
+    raise RuntimeError(
+        "CUDAExecutionProvider tidak tersedia. Recognition wajib GPU; "
+        "periksa onnxruntime-gpu, CUDA, dan cuDNN."
+    )
+
+app = FaceAnalysis(name="buffalo_l", providers=["CUDAExecutionProvider"])
 app.prepare(ctx_id=0, det_size=(640, 640))
+for model_name, model in app.models.items():
+    session = getattr(model, "session", None)
+    providers = session.get_providers() if session else []
+    print(f"[GPU] InsightFace {model_name}: {providers}")
+    if not providers or providers[0] != "CUDAExecutionProvider":
+        raise RuntimeError(
+            f"Model InsightFace {model_name} tidak memakai CUDAExecutionProvider: {providers}"
+        )
+
 # Pastikan model recognition tersedia
 if 'recognition' not in app.models:
     print("Model recognition tidak ditemukan pada buffalo_l.")
