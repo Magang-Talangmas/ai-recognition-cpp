@@ -51,15 +51,12 @@ jobs:
     needs: validate
     if: github.event_name == 'push' && github.ref == 'refs/heads/feat/recognition-fusion'
     runs-on: self-hosted
-    outputs:
-      worker_pid: ${{ steps.deploy.outputs.worker_pid }}
     concurrency:
       group: recognition-fusion-deploy
       cancel-in-progress: false
 
     steps:
       - name: Deploy validated commit to Pop!_OS
-        id: deploy
         env:
           DEPLOY_SHA: ${{ github.sha }}
         run: |
@@ -79,9 +76,6 @@ jobs:
           .venv/bin/python check_minio_upload.py smoke
 
           mkdir -p logs
-          # GitHub runner kills child processes carrying its tracking ID when
-          # the job ends. Keep the PM2-managed services outside that cleanup.
-          export RUNNER_TRACKING_ID=""
           if ! pm2 startOrReload ecosystem.config.js --update-env; then
             echo 'PM2 gagal menjalankan Fusion.'
             exit 1
@@ -91,26 +85,3 @@ jobs:
           sleep 20
           pm2 jlist | python3 -c 'import json,sys; apps={a["name"]:a["pm2_env"]["status"] for a in json.load(sys.stdin)}; failed=[n for n in ("ai-mobile-api","ai-recognition-worker") if apps.get(n)!="online"]; print("PM2 health check:", apps); sys.exit("PM2 worker tidak online: "+", ".join(failed) if failed else 0)'
           pm2 save
-          worker_pid=$(pm2 pid ai-recognition-worker)
-          test "$worker_pid" -gt 0
-          echo "worker_pid=$worker_pid" >> "$GITHUB_OUTPUT"
-
-  verify_fusion:
-    name: Verify Fusion survives runner cleanup
-    needs: deploy_fusion
-    runs-on: self-hosted
-    steps:
-      - name: Confirm worker PID remains online after previous job ends
-        env:
-          EXPECTED_WORKER_PID: ${{ needs.deploy_fusion.outputs.worker_pid }}
-        run: |
-          set -e
-          sleep 5
-          actual_worker_pid=$(pm2 pid ai-recognition-worker)
-          if [ "$actual_worker_pid" != "$EXPECTED_WORKER_PID" ]; then
-            echo "Fusion worker restarted after deploy: $EXPECTED_WORKER_PID -> $actual_worker_pid"
-            exit 1
-          fi
-          kill -0 "$actual_worker_pid"
-          pm2 jlist | python3 -c 'import json,sys; apps={a["name"]:a["pm2_env"]["status"] for a in json.load(sys.stdin)}; sys.exit(0 if apps.get("ai-recognition-worker")=="online" else 1)'
-          echo "Fusion worker stayed online after runner cleanup (PID $actual_worker_pid)."

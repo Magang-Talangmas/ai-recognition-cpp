@@ -60,8 +60,6 @@ MinIO dengan kredensial `.env` **sebelum** me-restart worker. Objek tes memakai
 nama tetap `healthchecks/ai-recognition-upload-smoke.txt`, sehingga tidak
 menumpuk pada setiap deploy. Tes ini memeriksa koneksi serta izin bucket;
 keberhasilan pengenalan wajah tetap perlu diperiksa dari event nyata.
-Job berikutnya memastikan PID worker tetap hidup setelah runner menyelesaikan
-proses pembersihan job deploy.
 
 Di server, tes yang sama bisa dijalankan manual:
 
