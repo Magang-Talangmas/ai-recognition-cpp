@@ -427,6 +427,7 @@ def process_worker(camera_id, face_img, fingerprint):
                             length=len(file_bytes),
                             content_type="image/jpeg"
                         )
+                        print(f"[MinIO] Snapshot tersimpan: {MINIO_BUCKET}/{file_name}")
                         base_pub = MINIO_PUBLIC_URL.rstrip('/')
                         thumb_url = f"{base_pub}/{MINIO_BUCKET}/{file_name}"
                 except Exception as upload_err:
