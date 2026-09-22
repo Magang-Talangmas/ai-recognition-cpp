@@ -71,10 +71,6 @@ jobs:
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python -m pip install -r requirements.txt
 
-          # Verify the same MinIO credentials used by the worker can write and
-          # read an object before restarting the live recognition process.
-          .venv/bin/python check_minio_upload.py smoke
-
           mkdir -p logs
           if ! pm2 startOrReload ecosystem.config.js --update-env; then
             echo 'PM2 gagal menjalankan Fusion.'

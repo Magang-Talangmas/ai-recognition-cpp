@@ -53,32 +53,6 @@ MINIO_BUCKET=recognition
 
 ## 🚀 Cara Menjalankan (Deployment via PM2)
 
-### Memeriksa upload MinIO
-
-Saat branch `feat/recognition-fusion` di-push, job deploy menjalankan tes tulis/baca
-MinIO dengan kredensial `.env` **sebelum** me-restart worker. Objek tes memakai
-nama tetap `healthchecks/ai-recognition-upload-smoke.txt`, sehingga tidak
-menumpuk pada setiap deploy. Tes ini memeriksa koneksi serta izin bucket;
-keberhasilan pengenalan wajah tetap perlu diperiksa dari event nyata.
-
-Di server, tes yang sama bisa dijalankan manual:
-
-```bash
-cd /home/popos/projek-anakmagang/ai-recognition
-.venv/bin/python check_minio_upload.py smoke
-```
-
-Setelah log worker menampilkan `Memproses: <nama> (<event>)` dan
-`[MinIO] Snapshot tersimpan: recognition/snapshots/<id>.jpg`, periksa objek
-terbaru tanpa menampilkan foto atau kredensial:
-
-```bash
-.venv/bin/python check_minio_upload.py recent --minutes 10
-```
-
-Wajah `UNKNOWN`, di luar jam absensi, terkena cooldown, atau `DRY_RUN=true`
-tidak mengunggah snapshot.
-
 Kita menggunakan **PM2** sebagai *process manager* agar aplikasi otomatis me-restart jika terjadi *crash* dan otomatis menyala saat server *reboot*.
 
 1. **Install Dependencies Python**
