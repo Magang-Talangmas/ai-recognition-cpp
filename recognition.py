@@ -153,10 +153,11 @@ if 'recognition' not in app.models:
     exit(1)
 rec_model = app.models['recognition']
 
-# Sinkronisasi otomatis: hapus karyawan Inactive, enroll ulang karyawan Active
-# Model app dioper agar tidak dimuat 2 kali
-from sync_enroll import sync_from_database
-sync_from_database(app=app)
+# Sinkronisasi otomatis: jalankan di proses terpisah agar VRAM bersih setelah selesai
+import sys
+import subprocess
+print("[Sync] Menjalankan sinkronisasi wajah di proses terpisah...")
+subprocess.run([sys.executable, "sync_enroll.py"], check=False)
 
 # Memuat data enrollment (dibangun oleh sync_from_database di atas)
 if not os.path.exists(EMBEDDINGS_FILE) or not os.path.exists(LABELS_FILE):
