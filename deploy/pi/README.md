@@ -1,6 +1,7 @@
 # Raspberry Pi 5: node detection dan preprocessing
 
 Branch `raspberry-pi5` menyediakan executable terpisah `face_detector_pi`.
+Kontrak untuk tim FE dan face recognition: [API_HANDOFF.md](API_HANDOFF.md).
 Target: Raspberry Pi 5 dengan OS Linux ARM64, satu stream, inferensi CPU.
 Recognition, database absensi, FaceFusion, API, dan video untuk browser tetap di server.
 Ini implementasi untuk diuji di perangkat, bukan klaim bahwa deployment Pi sudah selesai.

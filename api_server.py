@@ -167,9 +167,9 @@ if BBOX_CHANNEL:
 app = FastAPI(
     title="Talangmas Face Preprocessing API",
     description=(
-        "HTTP API for the Face Recognition team to consume preprocessed face tensors "
-        "produced by the AI preprocessing pipeline (SCRFD + CLAHE + Normalize).\n\n"
-        "Flow: viewer.py / C++ exe -> Redis -> api_server.py -> Face Recog Team"
+        "Relays SCRFD bounding boxes to the frontend and aligned 112x112 JPEG face crops "
+        "to the recognition team. Pi detector -> Redis -> this API. "
+        "See deploy/pi/API_HANDOFF.md for event contracts and deployment settings."
     ),
     version="1.0.0",
 )
