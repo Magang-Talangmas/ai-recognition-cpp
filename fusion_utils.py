@@ -17,9 +17,11 @@ def fuse_embeddings(embeddings: list[np.ndarray], weights: list[float] | None = 
     if len(normalized) <= 2:
         # Cannot do outlier check with 2 or less
         keep = normalized
+        keep_weights = weights if weights else [1.0] * len(normalized)
     else:
         # Outlier check: Drop if average cosine sim to others is below threshold (0.5)
         keep = []
+        keep_weights = []
         n = len(normalized)
         sim_threshold = 0.5
         for i in range(n):
@@ -30,12 +32,14 @@ def fuse_embeddings(embeddings: list[np.ndarray], weights: list[float] | None = 
             avg_sim = np.mean(sims_to_others)
             if avg_sim >= sim_threshold:
                 keep.append(normalized[i])
+                keep_weights.append(weights[i] if weights else 1.0)
             else:
                 print(f"    [Fusion] Warning: Photo {i} rejected as outlier (avg sim: {avg_sim:.3f})")
         
         if not keep:
             keep = normalized  # fallback if all are considered outliers
+            keep_weights = weights if weights else [1.0] * len(normalized)
 
-    # Average and re-normalize
-    fused = np.mean(keep, axis=0)
+    # Weighted Average and re-normalize
+    fused = np.average(keep, axis=0, weights=keep_weights)
     return fused / np.linalg.norm(fused)

@@ -85,6 +85,7 @@ def sync_from_database(app=None):
             json.dump({"employeeId": employee_id}, f)
 
         employee_embs = []
+        employee_weights = []
 
         for photo_url in photos:
             if not isinstance(photo_url, str) or not photo_url.startswith("http"):
@@ -117,13 +118,20 @@ def sync_from_database(app=None):
                 print(f"  -> Tidak ada wajah terdeteksi pada gambar {filename}")
                 continue
 
-            # Ambil wajah pertama yang terdeteksi (asumsi foto profil hanya ada 1 wajah)
-            embedding = faces[0].embedding
+            # Ambil wajah dengan bounding box terbesar (mengabaikan wajah bocor di background)
+            best_face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+            embedding = best_face.embedding
+            
+            # Bobot = Luas Kotak Wajah * Tingkat Keyakinan Detektor
+            area = (best_face.bbox[2] - best_face.bbox[0]) * (best_face.bbox[3] - best_face.bbox[1])
+            weight = best_face.det_score * area
+            
             employee_embs.append(embedding)
-            print(f"  -> Berhasil mengekstrak embedding dari {filename}")
+            employee_weights.append(float(weight))
+            print(f"  -> Berhasil mengekstrak embedding dari {filename} (Bobot: {weight:.0f})")
 
         if employee_embs:
-            fused_emb = fuse_embeddings(employee_embs)
+            fused_emb = fuse_embeddings(employee_embs, weights=employee_weights)
             upsert_query = """
             INSERT INTO employee_embeddings (employee_id, fused_embedding, source_photo_count, updated_at)
             VALUES (%s, %s, %s, now())
