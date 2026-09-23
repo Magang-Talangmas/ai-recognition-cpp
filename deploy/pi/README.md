@@ -1,6 +1,6 @@
 # Raspberry Pi 5: node detection dan preprocessing
 
-Branch `codex/raspberry-pi5` menyediakan executable terpisah `face_detector_pi`.
+Branch `raspberry-pi5` menyediakan executable terpisah `face_detector_pi`.
 Target: Raspberry Pi 5 dengan OS Linux ARM64, satu stream, inferensi CPU.
 Recognition, database absensi, FaceFusion, API, dan video untuk browser tetap di server.
 Ini implementasi untuk diuji di perangkat, bukan klaim bahwa deployment Pi sudah selesai.
@@ -59,7 +59,7 @@ Binary Windows/x64 dan SDK CUDA lama tidak dapat disalin untuk dijalankan di Pi.
 ```bash
 sudo apt update
 sudo apt install -y build-essential cmake git curl pkg-config libopencv-dev libhiredis-dev libssl-dev
-git clone --branch codex/raspberry-pi5 https://github.com/Magang-Talangmas/ai-recognition-cpp.git
+git clone --branch raspberry-pi5 https://github.com/Magang-Talangmas/ai-recognition-cpp.git
 cd ai-recognition-cpp
 curl -fL https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-aarch64-1.20.1.tgz -o /tmp/ort-pi.tgz
 sudo tar -xzf /tmp/ort-pi.tgz -C /opt

@@ -2,9 +2,9 @@ name: Pi CPU validation
 
 on:
   push:
-    branches: [codex/raspberry-pi5]
+    branches: [raspberry-pi5]
   pull_request:
-    branches: [codex/raspberry-pi5]
+    branches: [raspberry-pi5]
   workflow_dispatch:
 
 permissions:
