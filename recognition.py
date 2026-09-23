@@ -136,7 +136,7 @@ if "CUDAExecutionProvider" not in ort.get_available_providers():
         "periksa onnxruntime-gpu, CUDA, dan cuDNN."
     )
 
-app = FaceAnalysis(name="buffalo_l", providers=["CUDAExecutionProvider"])
+app = FaceAnalysis(name="buffalo_l", allowed_modules=['recognition'], providers=["CUDAExecutionProvider"])
 app.prepare(ctx_id=0, det_size=(640, 640))
 for model_name, model in app.models.items():
     session = getattr(model, "session", None)

@@ -17,6 +17,8 @@ module.exports = {
       name: "ai-recognition-worker",
       script: "recognition.py",
       interpreter: "/home/popos/projek-anakmagang/ai-recognition/.venv/bin/python",
+      kill_timeout: 3000,
+      wait_ready: false,
       autorestart: true,
       watch: false,
       min_uptime: '10s',
