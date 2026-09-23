@@ -21,19 +21,10 @@ if 'recognition' not in face_app.models:
     print("Model recognition tidak ditemukan pada buffalo_l.")
     exit(1)
 
+from minio_utils import get_image_from_url
+
 def cosine_similarity(emb1, emb2):
     return np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
-
-def download_image_cv2(url):
-    try:
-        resp = requests.get(url, timeout=10)
-        if resp.status_code == 200:
-            image_array = np.asarray(bytearray(resp.content), dtype=np.uint8)
-            img = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-            return img
-    except Exception as e:
-        print(f"Gagal mendownload gambar dari {url}: {e}")
-    return None
 
 def extract_embedding(img):
     faces = face_app.get(img)
@@ -60,9 +51,9 @@ def verify_face():
     if not employee_id or not photo_url or not master_photo_url:
         return jsonify({"success": False, "error": "Field employeeId, photoUrl, dan masterPhotoUrl wajib disertakan"}), 400
 
-    # Download kedua gambar dari Supabase
-    img_selfie = download_image_cv2(photo_url)
-    img_master = download_image_cv2(master_photo_url)
+    # Download kedua gambar (Bisa URL HTTP biasa atau URL MinIO private)
+    img_selfie = get_image_from_url(photo_url)
+    img_master = get_image_from_url(master_photo_url)
 
     if img_selfie is None:
         return jsonify({"success": False, "error": "Gagal mengunduh foto selfie dari URL"}), 400

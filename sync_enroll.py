@@ -7,6 +7,7 @@ import requests
 import psycopg2
 from dotenv import load_dotenv
 from fusion_utils import fuse_embeddings
+from minio_utils import get_image_from_url
 
 load_dotenv()
 
@@ -96,14 +97,8 @@ def sync_from_database(app=None):
 
             # Download gambar jika belum ada
             if not os.path.exists(local_path):
-                try:
-                    response = requests.get(photo_url, stream=True, timeout=15)
-                    response.raise_for_status()
-                    with open(local_path, "wb") as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                except Exception as e:
-                    print(f"  -> Gagal mendownload {photo_url}: {e}")
+                success = get_image_from_url(photo_url, local_path)
+                if not success:
                     continue
 
             # Baca gambar dengan OpenCV
