@@ -417,7 +417,9 @@ def process_worker(camera_id, face_img, fingerprint):
             thumb_url = None
             if minio_client:
                 try:
-                    success, buffer = cv2.imencode('.jpg', face_img)
+                    # --- Upscale image for better UI rendering ---
+                    display_img = cv2.resize(face_img, (336, 336), interpolation=cv2.INTER_CUBIC)
+                    success, buffer = cv2.imencode('.jpg', display_img)
                     if success:
                         file_bytes = buffer.tobytes()
                         file_name = f"snapshots/{uuid.uuid4()}.jpg"
