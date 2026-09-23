@@ -77,8 +77,9 @@ class Camera:
         while not self.stop.is_set():
             cap = cv2.VideoCapture()
             try:
-                if cap.open(self.url, cv2.CAP_FFMPEG, [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000,
-                                                       cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000]):
+                # Allow startup to reach a complete H.264 keyframe before retrying.
+                if cap.open(self.url, cv2.CAP_FFMPEG, [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000,
+                                                       cv2.CAP_PROP_READ_TIMEOUT_MSEC, 10000]):
                     print("[Preview] RTSP connected", flush=True)
                     while not self.stop.is_set():
                         ok, frame = cap.read()
@@ -106,7 +107,7 @@ class Camera:
 
     def close(self):
         self.stop.set()
-        self.thread.join(timeout=8)
+        self.thread.join(timeout=12)
 
 
 def overlay(cv2, frame, result):
@@ -170,8 +171,8 @@ def main():
                 cv2.putText(canvas, "Waiting for camera / reconnecting...", (20, 240),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
             if args.headless:
-                if now-last_success > 20:
-                    raise RuntimeError("No usable camera frame within 20 seconds; check RTSP/network")
+                if now-last_success > 40:
+                    raise RuntimeError("No usable camera frame within 40 seconds; check RTSP/network")
                 time.sleep(0.02)
             else:
                 if canvas is not None:
