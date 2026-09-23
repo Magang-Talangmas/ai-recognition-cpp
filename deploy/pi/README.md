@@ -7,11 +7,11 @@ Ini implementasi untuk diuji di perangkat, bukan klaim bahwa deployment Pi sudah
 
 ## Melihat kamera dan bounding box di laptop
 
-Jalankan preview lokal untuk memeriksa wajah yang terdeteksi, confidence, dan lima
-landmark pada video RTSP. Preview memanggil executable `face_detector_pi` melalui
+Jalankan preview lokal untuk memeriksa wajah yang terdeteksi dan confidence pada
+video RTSP. Titik landmark tidak digambar. Preview memanggil executable `face_detector_pi` melalui
 mode `--preview-stdio`, sehingga model, decoding SCRFD, NMS, dan alignment memakai
-kode C++ yang sama. Python hanya membaca stream dan menggambar hasil pada **frame
-yang persis sama**. Tidak perlu Redis, API, atau FE untuk pengujian visual ini.
+kode C++ yang sama. Python membaca stream dan menggambar bbox terbaru di atas video
+live. Tidak perlu Redis, API, atau FE untuk pengujian visual ini.
 Mode ini tidak publish hasil recognition/absensi dan tidak mengubah service Pi.
 
 Pada komputer Windows pengembangan yang sudah disiapkan:
@@ -23,9 +23,23 @@ cd D:\ai-recognition-cpp
 
 Kamera default `rtsp://192.168.77.100:8554/cam01` diambil dari konfigurasi contoh.
 Gunakan `--config .env.pi` untuk konfigurasi lain. Tekan **Q** atau **Esc**, atau
-tutup jendela untuk berhenti. Video preview diperbarui mengikuti frekuensi inferensi,
-bukan FPS asli CCTV, agar kotak tidak digambar pada frame yang berbeda.
-Saat frame berhenti diterima, tampilan berubah menjadi status reconnect.
+tutup jendela untuk berhenti. Capture, inference, dan tampilan bekerja terpisah:
+video ditampilkan maksimal 30 FPS, detection ditargetkan maksimal 10 FPS pada
+laptop, tanpa menunggu inference untuk menggambar frame berikutnya. Keduanya bisa
+diatur dengan `--display-fps 30 --detection-fps 10`. Nilai tersebut batas, bukan
+jaminan throughput. Konfigurasi service Pi tetap 2 FPS untuk mengendalikan beban.
+
+Hanya frame terbaru diambil setiap kali detector siap; tidak ada antrean inference.
+Kotak diperhalus dengan interpolasi singkat 40 ms, dan hasil berumur lebih dari
+1 detik atau berasal dari sesi koneksi lama dibuang. Jika frame baru tidak diterima
+selama 1 detik, tampilan menjadi status reconnect. Landmark tetap dihitung karena
+dibutuhkan alignment; yang dihapus hanya tampilan titik kuningnya.
+
+Karena video tidak menunggu detector, bbox berasal dari frame sedikit lebih lama
+daripada video yang sedang ditampilkan. `age` mengukur umur hasil sejak frame
+diterima aplikasi, bukan latency kamera-ke-layar. Log tiap 5 detik menampilkan FPS
+video yang dirender, FPS detection aktual, waktu inference, dan umur hasil.
+Delay kamera, encoder, jaringan, dan buffer decoder tidak tercakup pada angka ini.
 
 Untuk clone baru, build executable dahulu, kemudian siapkan Python:
 
