@@ -1,0 +1,30 @@
+[Unit]
+Description=Single-camera Raspberry Pi face detector
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# Create this dedicated user and install the repository under /opt/face-detection.
+User=face-detection
+Group=face-detection
+WorkingDirectory=/opt/face-detection
+ExecStart=/opt/face-detection/build-pi/face_detector_pi --config /etc/face-detection/pi.env
+Environment=OPENCV_FFMPEG_CAPTURE_OPTIONS=rtsp_transport;tcp
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+Nice=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

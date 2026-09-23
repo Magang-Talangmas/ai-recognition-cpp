@@ -20,7 +20,7 @@ public:
      * 
      * @param scrfd_model_path Path to the SCRFD ONNX model (.onnx)
      */
-    explicit FacePreprocessor(const std::string& scrfd_model_path);
+    explicit FacePreprocessor(const std::string& scrfd_model_path, int threads = 1);
     ~FacePreprocessor();
 
     /**

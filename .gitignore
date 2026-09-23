@@ -1,6 +1,10 @@
 ﻿vcpkg/
 build/
 .env
+.env.pi
+build-pi*/
+.deps/
+output/
 ffmpeg.zip
 inspect_onnx.cpp
 scrfd_ref.cpp

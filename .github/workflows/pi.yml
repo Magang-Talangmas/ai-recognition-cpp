@@ -1,0 +1,34 @@
+name: Pi CPU validation
+
+on:
+  push:
+    branches: [codex/raspberry-pi5]
+  pull_request:
+    branches: [codex/raspberry-pi5]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libopencv-dev libhiredis-dev libssl-dev
+      - name: Install CPU ONNX Runtime ARM64 SDK
+        run: |
+          curl -fL https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-aarch64-1.20.1.tgz -o "$RUNNER_TEMP/ort.tgz"
+          tar -xzf "$RUNNER_TEMP/ort.tgz" -C "$RUNNER_TEMP"
+          echo "ONNXRUNTIME_ROOT=$RUNNER_TEMP/onnxruntime-linux-aarch64-1.20.1" >> "$GITHUB_ENV"
+      - name: Build and test native CPU node
+        run: bash deploy/pi/build.sh
+      - name: Test API contracts
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pi-tests"
+          "$RUNNER_TEMP/pi-tests/bin/python" -m pip install fastapi uvicorn redis python-dotenv httpx
+          "$RUNNER_TEMP/pi-tests/bin/python" -m unittest discover -s tests -p 'test_*.py' -v

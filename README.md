@@ -1,5 +1,7 @@
 # Talangmas AI Attendance - Face Preprocessor Service
 
+**Varian Raspberry Pi 5 (CPU, RTSP langsung):** lihat [panduan instalasi, alur, dan kontrak FE/recognition](deploy/pi/README.md). Jalur ini menggunakan executable terpisah `face_detector_pi`; uraian lama di bawah bukan panduan deployment Pi.
+
 This repository contains the high-performance C++ backend for the **Talangmas AI Attendance** system. It is designed to capture RTSP video streams from CCTV cameras, detect faces using the **SCRFD** model via ONNX Runtime, preprocess (align, crop, fix brightness, blur check) the faces, and publish the resulting tensor data to a **Redis** queue for downstream facial recognition.
 
 ## 🌟 Fitur Utama & Pipeline (Sesuai Diagram Alur)

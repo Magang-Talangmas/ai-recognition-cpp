@@ -5,15 +5,14 @@
 #include <opencv2/dnn.hpp> // Required for dnn::NMSBoxes
 #include <opencv2/calib3d.hpp> // Required for estimateAffinePartial2D
 
-FacePreprocessor::FacePreprocessor(const std::string& scrfd_model_path) {
+FacePreprocessor::FacePreprocessor(const std::string& scrfd_model_path, int threads) {
     // 1. Konfigurasi ONNX Runtime Session
-    session_options_.SetIntraOpNumThreads(1);
+    session_options_.SetIntraOpNumThreads(threads);
     session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
     
     // Di Windows, ONNX Runtime mewajibkan string path dalam bentuk wide-char (wstring)
 #ifdef _WIN32
-    std::string model_path = "D:\\ai-recognition-cpp\\models\\scrfd_2.5g_kps.onnx";
-    std::wstring w_model_path(model_path.begin(), model_path.end());
+    std::wstring w_model_path(scrfd_model_path.begin(), scrfd_model_path.end());
     const wchar_t* model_path_ptr = w_model_path.c_str();
 #else
     const char* model_path_ptr = scrfd_model_path.c_str();
@@ -31,7 +30,7 @@ FacePreprocessor::FacePreprocessor(const std::string& scrfd_model_path) {
     } catch (const Ort::Exception& e) {
         std::cerr << "[FacePreprocessor] ERROR: Gagal me-load ONNX model SCRFD: " << e.what() << std::endl;
         std::cerr << "Pastikan file model .onnx berada di path yang benar!" << std::endl;
-        return;
+        throw;
     }
 
     // 2. Alokasi nama In/Out nodes agar dinamis sesuai model

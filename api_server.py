@@ -10,12 +10,17 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+from bbox_events import parse_bbox_event
 
 load_dotenv()
 
 REDIS_HOST  = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT  = int(os.getenv("REDIS_PORT", 6379))
 REDIS_CH    = os.getenv("REDIS_CHANNEL", "face_preprocessed_queue")
+# Opt-in: leave empty for the legacy per-face aggregation mode.
+BBOX_CHANNEL = os.getenv("BBOX_CHANNEL", "")
+if BBOX_CHANNEL and BBOX_CHANNEL == REDIS_CH:
+    raise ValueError("BBOX_CHANNEL must differ from REDIS_CHANNEL")
 API_PORT    = int(os.getenv("API_PORT", 8000))
 API_HOST    = os.getenv("API_HOST", "0.0.0.0")
 
@@ -40,12 +45,9 @@ lock            = threading.Lock()
 # ─────────────────────────────────────────────
 def redis_listener():
     global latest_result
-    r      = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
-    pubsub = r.pubsub()
-    pubsub.subscribe(REDIS_CH)
     print(f"[Redis] Listening on channel: {REDIS_CH}")
 
-    for message in pubsub.listen():
+    for message in redis_messages(REDIS_CH):
         if message["type"] != "message":
             continue
         try:
@@ -60,6 +62,12 @@ def redis_listener():
                 "frame_width":       data.get("frame_width"),
                 "frame_height":      data.get("frame_height"),
                 "face_image_base64": data.get("face_image_base64"),
+                "image_format":     data.get("image_format"),
+                "frame_id":         data.get("frame_id"),
+                "session_id":       data.get("session_id"),
+                "stream_path":      data.get("stream_path"),
+                "received_at_ms":   data.get("received_at_ms"),
+                "landmarks":        data.get("landmarks"),
             }
             with lock:
                 face_history.append(entry)
@@ -80,7 +88,7 @@ def redis_listener():
                     "frame_height": entry.get("frame_height"),
                     "name": "Unknown" # Sesuai kesepakatan, kita belum tau namanya
                 }
-                for q in list(bbox_subscribers):
+                for q in ([] if BBOX_CHANNEL else list(bbox_subscribers)):
                     try:
                         q.append(bbox_payload)
                     except Exception:
@@ -88,14 +96,46 @@ def redis_listener():
         except Exception as e:
             print(f"[Redis] Parse error: {e}")
 
+def redis_messages(channel, pattern=False, decode=True):
+    """Reconnect subscriptions after startup failure or a Redis disconnect."""
+    while True:
+        try:
+            with redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0,
+                                 decode_responses=decode, socket_connect_timeout=3,
+                                 socket_timeout=5, health_check_interval=2) as client:
+                with client.pubsub() as pubsub:
+                    if pattern:
+                        pubsub.psubscribe(channel)
+                    else:
+                        pubsub.subscribe(channel)
+                    while True:
+                        message = pubsub.get_message(timeout=1.0)
+                        if message is not None:
+                            yield message
+        except redis_lib.RedisError:
+            print(f"[Redis] Subscription {channel} disconnected; retry in 3s", flush=True)
+            time.sleep(3)
+
+
+def bbox_listener():
+    for message in redis_messages(BBOX_CHANNEL):
+        if message["type"] != "message":
+            continue
+        try:
+            data = parse_bbox_event(json.loads(message["data"]))
+        except (ValueError, TypeError):
+            print("[Redis] Invalid frame bbox message", flush=True)
+            continue
+        with lock:
+            for q in list(bbox_subscribers):
+                q.append(data)
+
+
 def video_listener():
     global latest_video_frames
-    r      = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0) # raw bytes
-    pubsub = r.pubsub()
-    pubsub.psubscribe("face_video_stream_*")
     print(f"[Redis] Listening on pattern: face_video_stream_*")
 
-    for message in pubsub.listen():
+    for message in redis_messages("face_video_stream_*", pattern=True, decode=False):
         if message["type"] != "pmessage":
             continue
         try:
@@ -117,6 +157,8 @@ def video_listener():
 
 threading.Thread(target=redis_listener, daemon=True).start()
 threading.Thread(target=video_listener, daemon=True).start()
+if BBOX_CHANNEL:
+    threading.Thread(target=bbox_listener, daemon=True).start()
 
 
 # ─────────────────────────────────────────────
@@ -268,6 +310,11 @@ async def stream_live_bbox(request: Request):
                         q.clear()
                         
                 if items:
+                    if BBOX_CHANNEL:
+                        for payload in items:
+                            yield f"data: {json.dumps(payload)}\n\n"
+                        await asyncio.sleep(0.05)
+                        continue
                     # Kelompokkan Bounding Box berdasarkan kamera
                     grouped_data = {}
                     for item in items:
