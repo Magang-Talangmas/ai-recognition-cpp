@@ -1,6 +1,7 @@
 #include "FacePreprocessor.hpp"
 #include "PiConfig.hpp"
 #include "PiPayload.hpp"
+#include "PiPreview.hpp"
 #include <sw/redis++/redis++.h>
 #include <sw/redis++/redis_uri.h>
 #include <algorithm>
@@ -86,23 +87,30 @@ int main(int argc, char** argv) {
     std::signal(SIGTERM, stopSignal);
     try {
         std::string configPath = ".env.pi";
-        bool checkModel = false, validate = false;
+        bool checkModel = false, validate = false, previewStdio = false;
         for (int i = 1; i < argc; ++i) {
             const std::string arg = argv[i];
             if (arg == "--config" && i + 1 < argc) configPath = argv[++i];
             else if (arg == "--check-model") checkModel = true;
             else if (arg == "--validate-config") validate = true;
+            else if (arg == "--preview-stdio") previewStdio = true;
             else if (arg == "--help") {
-                std::cout << "face_detector_pi [--config PATH] [--validate-config | --check-model]\n";
+                std::cout << "face_detector_pi [--config PATH] [--validate-config | --check-model | --preview-stdio]\n";
                 return 0;
             } else throw std::runtime_error("Unknown or incomplete argument: " + arg);
         }
+        if (int(checkModel) + int(validate) + int(previewStdio) > 1)
+            throw std::runtime_error("Choose only one diagnostic mode");
+        // Keep stdout exclusively for replies; model diagnostics go to stderr.
+        std::ostream previewOutput(std::cout.rdbuf());
+        if (previewStdio) std::cout.rdbuf(std::cerr.rdbuf());
         const auto c = pi::loadConfig(configPath);
         std::cout << "[Pi] CPU; camera=" << c.camera << "; inference limit=" << c.fps
             << " FPS; threads=" << c.threads << "; preview=off" << std::endl;
         if (validate) return 0;
         cv::setNumThreads(c.threads);
         FacePreprocessor model(c.model, c.threads);
+        if (previewStdio) return runPiPreview(model, c, previewOutput);
         if (checkModel) {
             auto faces = model.process(cv::Mat::zeros(480, 640, CV_8UC3));
             std::cout << "[Pi] CPU model smoke test completed; faces=" << faces.size() << std::endl;

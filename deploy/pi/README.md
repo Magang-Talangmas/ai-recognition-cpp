@@ -5,6 +5,53 @@ Target: Raspberry Pi 5 dengan OS Linux ARM64, satu stream, inferensi CPU.
 Recognition, database absensi, FaceFusion, API, dan video untuk browser tetap di server.
 Ini implementasi untuk diuji di perangkat, bukan klaim bahwa deployment Pi sudah selesai.
 
+## Melihat kamera dan bounding box di laptop
+
+Jalankan preview lokal untuk memeriksa wajah yang terdeteksi, confidence, dan lima
+landmark pada video RTSP. Preview memanggil executable `face_detector_pi` melalui
+mode `--preview-stdio`, sehingga model, decoding SCRFD, NMS, dan alignment memakai
+kode C++ yang sama. Python hanya membaca stream dan menggambar hasil pada **frame
+yang persis sama**. Tidak perlu Redis, API, atau FE untuk pengujian visual ini.
+Mode ini tidak publish hasil recognition/absensi dan tidak mengubah service Pi.
+
+Pada komputer Windows pengembangan yang sudah disiapkan:
+
+```powershell
+cd D:\ai-recognition-cpp
+.\output\pi-validation-venv\Scripts\python.exe tools/preview_pi.py
+```
+
+Kamera default `rtsp://192.168.77.100:8554/cam01` diambil dari konfigurasi contoh.
+Gunakan `--config .env.pi` untuk konfigurasi lain. Tekan **Q** atau **Esc**, atau
+tutup jendela untuk berhenti. Video preview diperbarui mengikuti frekuensi inferensi,
+bukan FPS asli CCTV, agar kotak tidak digambar pada frame yang berbeda.
+Saat frame berhenti diterima, tampilan berubah menjadi status reconnect.
+
+Untuk clone baru, build executable dahulu, kemudian siapkan Python:
+
+```bash
+python -m venv .venv-preview
+# Windows: .venv-preview/Scripts/python.exe; Linux: .venv-preview/bin/python
+.venv-preview/bin/python -m pip install opencv-python
+.venv-preview/bin/python tools/preview_pi.py --exe build-pi/face_detector_pi
+```
+
+Pada Windows gunakan interpreter `Scripts/python.exe` dan path executable Windows
+hasil build sendiri melalui `--exe`. Folder environment dan binary lokal tidak
+disertakan dalam Git. Preview GUI memerlukan desktop; pada Pi headless jalankan
+tes tanpa GUI atau lakukan preview di laptop.
+
+Tes terbatas dan penyimpanan snapshot lokal (opsional):
+
+```powershell
+.\output\pi-validation-venv\Scripts\python.exe tools/preview_pi.py --headless --frames 5 --snapshot output/preview.jpg
+```
+
+Secara default tidak ada rekaman atau snapshot yang disimpan. Pengujian visual
+di laptop membuktikan model dapat memproses stream; tidak membuktikan throughput Pi
+atau integrasi Redis/FE. Kotak bisa tidak muncul pada wajah kecil, tertutup, atau
+menoleh jauh; periksa variasi pose dan pencahayaan sebelum menilai akurasi.
+
 ## Alur yang dijalankan
 
 1. Media stream menyediakan `rtsp://192.168.77.100:8554/cam01`.
