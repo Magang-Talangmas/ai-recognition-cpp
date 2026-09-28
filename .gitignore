@@ -11,7 +11,8 @@ __pycache__/
 
 # Data & Models
 data/
-models/
+models/*
+!models/scrfd.hef
 *.onnx
 
 # CMake
